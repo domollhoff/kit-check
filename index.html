@@ -14,26 +14,27 @@
 <title>Kit Check</title>
 
 <!--
-  PHASE 0 FOUNDATION. See SPEC.md.
-  What lives here: design tokens, IndexedDB layer with schema migration,
-  JSON backup export/import, service worker wiring, build number, diagnostics.
-  What does NOT live here yet: gear, kits, gigs, packing. That is Phase 1+.
+  Kit Check. See SPEC.md.
+  Phase 0: tokens, IndexedDB + migrations, backup, service worker, build number.
+  Phase 1: first-run kit builder, gear, cases, kits, photos, search.
+  Next:    Phase 2, gigs and the pack screen.
 
-  Conventions for whoever builds Phase 1:
-  - Bump BUILD on every deploy. The service worker cache name keys off it.
-  - Add new object stores by appending a migration in DB.migrations, never by
-    editing an existing one. DB_VERSION must go up by one at the same time.
-  - Every colour comes from a token in :root. Never define a colour only
-    inside a media query or a [data-theme] block.
-  - The ambient gradient layer (.bg) is the app's progress indicator. Drive it
-    with setProgress(0..1). Do not add conventional progress bars.
+  Conventions:
+  - Bump BUILD in index.html AND sw.js on every deploy.
+  - Schema changes: append to DB.migrations, raise DB_VERSION by one.
+  - Every colour is a token in :root. Never define one only inside a media
+    query or [data-theme] block.
+  - The ambient gradient (.bg) is the progress indicator. setProgress(0..1).
+    No conventional progress bars.
+  - Never await between creating an IndexedDB transaction and using it.
 -->
 
 <style>
 :root{
   --bg:#f4f5f3;
   --surface:#ffffff;
-  --surface-2:#e9ebe7;
+  --surface-2:#eceeea;
+  --surface-3:#e2e5e0;
   --ink:#141a1b;
   --ink-2:#58635f;
   --ink-3:#8a9490;
@@ -43,169 +44,236 @@
   --accent-ink:#ffffff;
   --accent-soft:#dfeeea;
   --good:#2e7d52;
+  --good-soft:#dcefe3;
   --warn:#8d5a15;
+  --warn-soft:#f7ecda;
   --danger:#a2392b;
   --grad-a:#7fb7a6;
   --grad-b:#c9b78a;
   --grad-c:#8fa6c4;
-  --grad-alpha:0.55;
-  --ui:"Helvetica Neue",Helvetica,Arial,sans-serif;
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --grad-alpha:.55;
+  --scrim:rgba(10,14,15,.42);
+  --shadow:0 1px 2px rgba(20,26,27,.05),0 10px 30px rgba(20,26,27,.07);
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
   --r:14px;
   --tap:44px;
+  --row:56px;
   --ease:cubic-bezier(.2,.8,.2,1);
+  --spring:cubic-bezier(.34,1.3,.5,1);
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#101416;
-    --surface:#191f21;
-    --surface-2:#222a2c;
-    --ink:#eef2f1;
-    --ink-2:#a2aeae;
-    --ink-3:#6e7b7b;
-    --line:#2a3335;
-    --line-2:#222a2c;
-    --accent:#68c0ad;
-    --accent-ink:#06201b;
-    --accent-soft:#13302b;
-    --good:#5cc48c;
-    --warn:#d6a05e;
+    --bg:#101416; --surface:#191f21; --surface-2:#212829; --surface-3:#2a3234;
+    --ink:#eef2f1; --ink-2:#a2aeae; --ink-3:#6e7b7b;
+    --line:#2a3335; --line-2:#222a2c;
+    --accent:#68c0ad; --accent-ink:#06201b; --accent-soft:#13302b;
+    --good:#5cc48c; --good-soft:#12291d;
+    --warn:#d6a05e; --warn-soft:#2a2014;
     --danger:#e08575;
-    --grad-a:#2b6d5f;
-    --grad-b:#6b5a2e;
-    --grad-c:#2f4a6b;
-    --grad-alpha:0.75;
+    --grad-a:#2b6d5f; --grad-b:#6b5a2e; --grad-c:#2f4a6b; --grad-alpha:.75;
+    --scrim:rgba(0,0,0,.55);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px rgba(0,0,0,.4);
   }
 }
 :root[data-theme="dark"]{
-  --bg:#101416;
-  --surface:#191f21;
-  --surface-2:#222a2c;
-  --ink:#eef2f1;
-  --ink-2:#a2aeae;
-  --ink-3:#6e7b7b;
-  --line:#2a3335;
-  --line-2:#222a2c;
-  --accent:#68c0ad;
-  --accent-ink:#06201b;
-  --accent-soft:#13302b;
-  --good:#5cc48c;
-  --warn:#d6a05e;
+  --bg:#101416; --surface:#191f21; --surface-2:#212829; --surface-3:#2a3234;
+  --ink:#eef2f1; --ink-2:#a2aeae; --ink-3:#6e7b7b;
+  --line:#2a3335; --line-2:#222a2c;
+  --accent:#68c0ad; --accent-ink:#06201b; --accent-soft:#13302b;
+  --good:#5cc48c; --good-soft:#12291d;
+  --warn:#d6a05e; --warn-soft:#2a2014;
   --danger:#e08575;
-  --grad-a:#2b6d5f;
-  --grad-b:#6b5a2e;
-  --grad-c:#2f4a6b;
-  --grad-alpha:0.75;
+  --grad-a:#2b6d5f; --grad-b:#6b5a2e; --grad-c:#2f4a6b; --grad-alpha:.75;
+  --scrim:rgba(0,0,0,.55);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px rgba(0,0,0,.4);
 }
 
-*{box-sizing:border-box;}
-html,body{height:100%;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html{height:100%;}
 body{
-  margin:0;background:var(--bg);color:var(--ink);
+  margin:0;min-height:100%;background:var(--bg);color:var(--ink);
   font-family:var(--ui);font-size:16px;line-height:1.45;
-  -webkit-font-smoothing:antialiased;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
   padding-inline:16px;
-  padding-block:0 calc(24px + env(safe-area-inset-bottom));
-  overflow-x:hidden;
+  padding-block:0 calc(88px + env(safe-area-inset-bottom));
 }
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;}
+input,select,textarea{
+  font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);
+  border-radius:11px;padding:12px 13px;width:100%;min-height:var(--tap);appearance:none;
+}
+input::placeholder,textarea::placeholder{color:var(--ink-3);}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+button:focus-visible,a:focus-visible,label:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px;}
+[hidden]{display:none !important;}
 
-/* ---- ambient gradient: this is the progress indicator (see SPEC 1.1) ---- */
-.bg{
-  position:fixed;inset:0;z-index:-1;pointer-events:none;
-  opacity:var(--p-op,.25);
-  transition:opacity .9s var(--ease);
-  will-change:transform,opacity;
-}
-.bg i{
-  position:absolute;display:block;border-radius:50%;
-  filter:blur(60px);opacity:var(--grad-alpha);
-  will-change:transform;
-}
-.bg i:nth-child(1){width:70vmax;height:70vmax;left:-25vmax;top:-30vmax;background:var(--grad-a);animation:drift1 64s var(--ease) infinite alternate;}
-.bg i:nth-child(2){width:60vmax;height:60vmax;right:-25vmax;top:10vmax;background:var(--grad-b);animation:drift2 81s var(--ease) infinite alternate;}
-.bg i:nth-child(3){width:64vmax;height:64vmax;left:5vmax;bottom:-34vmax;background:var(--grad-c);animation:drift3 73s var(--ease) infinite alternate;}
-@keyframes drift1{to{transform:translate3d(14vmax,10vmax,0) scale(1.15);}}
-@keyframes drift2{to{transform:translate3d(-12vmax,14vmax,0) scale(1.1);}}
-@keyframes drift3{to{transform:translate3d(10vmax,-12vmax,0) scale(1.18);}}
+/* ---- ambient gradient = progress (SPEC 1.1) ---- */
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:var(--p-op,.2);transition:opacity 1.1s var(--ease);}
+.bg i{position:absolute;display:block;border-radius:50%;filter:blur(64px);opacity:var(--grad-alpha);will-change:transform;}
+.bg i:nth-child(1){width:70vmax;height:70vmax;left:-25vmax;top:-30vmax;background:var(--grad-a);animation:d1 64s var(--ease) infinite alternate;}
+.bg i:nth-child(2){width:60vmax;height:60vmax;right:-25vmax;top:10vmax;background:var(--grad-b);animation:d2 81s var(--ease) infinite alternate;}
+.bg i:nth-child(3){width:64vmax;height:64vmax;left:5vmax;bottom:-34vmax;background:var(--grad-c);animation:d3 73s var(--ease) infinite alternate;}
+@keyframes d1{to{transform:translate3d(14vmax,10vmax,0) scale(1.15);}}
+@keyframes d2{to{transform:translate3d(-12vmax,14vmax,0) scale(1.1);}}
+@keyframes d3{to{transform:translate3d(10vmax,-12vmax,0) scale(1.18);}}
 
 .shell{max-width:640px;margin:0 auto;}
 
-header.top{
-  display:flex;align-items:center;gap:12px;
-  padding-block:calc(18px + env(safe-area-inset-top)) 14px;
-}
+/* ---- header ---- */
+header.top{display:flex;align-items:center;gap:12px;padding-block:calc(14px + env(safe-area-inset-top)) 10px;min-height:56px;}
 .wordmark{display:flex;align-items:center;gap:10px;}
-.wordmark img{width:28px;height:28px;border-radius:7px;display:block;}
-.wordmark h1{margin:0;font-size:17px;font-weight:700;letter-spacing:-.02em;}
+.wordmark img{width:26px;height:26px;border-radius:7px;display:block;}
+.wordmark h1{margin:0;font-size:16px;font-weight:700;letter-spacing:-.02em;}
 header.top .sp{flex:1;}
+.backbtn{display:inline-flex;align-items:center;gap:4px;min-height:36px;padding:0 10px 0 4px;border-radius:9px;color:var(--accent);font-weight:600;font-size:15px;}
 
-.eyebrow{
-  font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;
-  color:var(--ink-3);margin:0 0 6px;
-}
-h2{font-size:24px;font-weight:700;letter-spacing:-.03em;margin:0 0 8px;text-wrap:balance;}
+/* ---- type ---- */
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px;}
+h2{font-size:26px;font-weight:700;letter-spacing:-.03em;margin:0 0 6px;line-height:1.15;text-wrap:balance;}
 p.lede{color:var(--ink-2);font-size:15px;margin:0 0 18px;max-width:52ch;}
+.sectitle{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:22px 0 8px;display:flex;align-items:center;gap:8px;}
+.sectitle .n{margin-left:auto;}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+.muted{color:var(--ink-2);}
+.note{font-size:13px;color:var(--ink-3);margin:8px 0 0;line-height:1.45;}
 
-.card{
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
-  padding:16px;margin-bottom:12px;
+/* ---- cards & lists ---- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px;}
+.card h3{margin:0 0 10px;font-size:15px;font-weight:700;}
+.list{display:grid;gap:8px;}
+.row{
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;
+  min-height:var(--row);padding:9px 12px;width:100%;text-align:left;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  transition:transform .12s var(--ease),background .2s var(--ease);
+  animation:rise .28s var(--ease) both;
 }
-.card h3{margin:0 0 10px;font-size:15px;font-weight:700;letter-spacing:-.01em;}
+.row:active{transform:scale(.985);}
+@keyframes rise{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+.row .t{display:block;font-size:15.5px;font-weight:600;letter-spacing:-.01em;min-width:0;overflow-wrap:anywhere;}
+.row .s{display:block;font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:.02em;}
+.row .chev{color:var(--ink-3);font-size:18px;padding-right:2px;}
+.thumb{
+  width:40px;height:40px;border-radius:9px;flex:none;overflow:hidden;
+  background:var(--surface-2);border:1px solid var(--line-2);
+  display:grid;place-items:center;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-3);
+}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.thumb.lg{width:72px;height:72px;border-radius:12px;font-size:12px;}
+.swatch{width:12px;height:12px;border-radius:4px;flex:none;border:1px solid rgba(128,128,128,.35);display:inline-block;vertical-align:-1px;}
 
-.kv{display:grid;gap:0;}
-.kv div{
-  display:flex;justify-content:space-between;gap:14px;align-items:baseline;
-  padding:9px 0;border-bottom:1px solid var(--line-2);font-size:14.5px;
-}
+.kv{display:grid;}
+.kv div{display:flex;justify-content:space-between;gap:14px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line-2);font-size:14.5px;}
 .kv div:last-child{border-bottom:0;}
 .kv span:first-child{color:var(--ink-2);flex:1 1 auto;min-width:0;}
 .kv span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;flex:0 1 auto;min-width:0;overflow-wrap:anywhere;}
-.ok{color:var(--good);}
-.no{color:var(--danger);}
+.ok{color:var(--good);} .no{color:var(--danger);}
 
+/* ---- buttons ---- */
 .btn{
   display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
-  min-height:var(--tap);padding:12px 16px;border-radius:11px;
-  font:inherit;font-weight:600;font-size:15px;cursor:pointer;
+  min-height:var(--tap);padding:12px 16px;border-radius:12px;
+  font-weight:600;font-size:15px;
   background:var(--surface);border:1px solid var(--line);color:var(--ink);
-  transition:transform .12s var(--ease),background .2s var(--ease);
+  transition:transform .12s var(--ease),background .2s var(--ease),opacity .2s;
 }
 .btn:active{transform:scale(.985);}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;}
+.btn.ghost{background:transparent;}
 .btn.danger{color:var(--danger);}
+.btn.sm{min-height:38px;padding:8px 13px;font-size:13.5px;border-radius:10px;width:auto;}
+.btn[disabled]{opacity:.45;pointer-events:none;}
 .btn+.btn{margin-top:8px;}
-button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btnrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.btnrow .btn+.btn{margin-top:0;}
 
-.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--surface-2);padding:4px;border-radius:11px;}
-.seg button{
-  font:inherit;font-size:13.5px;font-weight:600;border:0;background:transparent;color:var(--ink-2);
-  padding:9px 4px;border-radius:8px;cursor:pointer;min-height:38px;
-}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--surface-2);padding:4px;border-radius:12px;}
+.seg button{font-size:13.5px;font-weight:600;color:var(--ink-2);padding:9px 4px;border-radius:9px;min-height:38px;transition:background .2s var(--ease);}
 .seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08);}
 
-.toast{
-  position:fixed;left:16px;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:50;
-  max-width:608px;margin:0 auto;background:var(--surface);border:1px solid var(--line);
-  border-radius:12px;padding:13px 15px;font-size:14.5px;box-shadow:0 10px 30px rgba(0,0,0,.16);
-  transform:translateY(140%);transition:transform .34s var(--ease);
+.chips{display:flex;flex-wrap:wrap;gap:8px;}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:6px 13px;
+  border:1px solid var(--line);border-radius:99px;background:var(--surface);
+  font-size:13.5px;font-weight:600;color:var(--ink-2);transition:background .18s var(--ease),color .18s var(--ease);
 }
-.toast.up{transform:translateY(0);}
+.chip.on{background:var(--accent);border-color:transparent;color:var(--accent-ink);}
+.chip.add{border-style:dashed;color:var(--accent);}
+
+.search{position:relative;margin-bottom:12px;}
+.search input{padding-left:38px;}
+.search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--ink-3);}
+
+.empty{border:1px dashed var(--line);border-radius:var(--r);padding:26px 18px;text-align:center;color:var(--ink-2);font-size:14.5px;}
+.empty strong{display:block;color:var(--ink);font-size:16px;margin-bottom:4px;}
+
+.field{display:grid;gap:6px;}
+.field label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);}
+.fields{display:grid;gap:14px;}
+
+/* ---- pick list (kit editor) ---- */
+.pick{display:grid;gap:6px;}
+.pick button{
+  display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:11px;
+  min-height:48px;padding:6px 10px;border-radius:11px;text-align:left;
+  background:var(--surface);border:1px solid var(--line);
+}
+.pick button .t{display:block;font-size:15px;font-weight:600;}
+.pick button .s{display:block;font-family:var(--mono);font-size:11px;color:var(--ink-3);}
+.pick button.on{background:var(--accent-soft);border-color:transparent;}
+.tick{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;color:transparent;font-size:13px;font-weight:700;transition:background .18s var(--spring),transform .18s var(--spring);}
+.pick button.on .tick{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);transform:scale(1.06);}
+
+/* ---- sheet ---- */
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:40;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:fade .22s var(--ease) both;}
+@keyframes fade{from{opacity:0;}to{opacity:1;}}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;
+  background:var(--surface);border-top:1px solid var(--line);
+  border-radius:20px 20px 0 0;padding:14px 16px calc(18px + env(safe-area-inset-bottom));
+  max-height:90vh;overflow-y:auto;box-shadow:0 -12px 44px rgba(0,0,0,.22);
+  animation:up .38s var(--spring) both;
+}
+@keyframes up{from{transform:translateY(40px);opacity:0;}to{transform:none;opacity:1;}}
+.sheet .inner{max-width:640px;margin:0 auto;display:grid;gap:14px;}
+.sheet .grab{width:36px;height:4px;border-radius:99px;background:var(--line);margin:0 auto 2px;}
+.sheet h3{margin:0;font-size:19px;font-weight:700;letter-spacing:-.025em;}
+.sheet .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px;}
+.sheet .actions .btn{margin:0;}
+
+/* ---- photo picker ---- */
+.photo{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;}
+.photo .fileb{position:relative;overflow:hidden;}
+.photo input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;}
+.photo .btn{margin:0;}
+
+/* ---- first run ---- */
+.fr{min-height:calc(100vh - 200px);display:flex;flex-direction:column;}
+.fr .grow{flex:1;}
+.fr h2{font-size:30px;}
+.fr .count{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 8px;}
+.addbar{display:grid;grid-template-columns:1fr auto;gap:8px;}
+.addbar .btn{margin:0;width:auto;padding-inline:16px;}
+.fr .list{margin-top:10px;}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;}
+
+/* ---- tabs ---- */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);padding:6px 12px calc(6px + env(safe-area-inset-bottom));}
+.tabs .inner{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}
+.tab{display:grid;justify-items:center;gap:3px;padding:7px 4px;border-radius:10px;font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);min-height:52px;transition:color .18s,background .18s;}
+.tab svg{width:20px;height:20px;}
+.tab.on{color:var(--accent);background:var(--accent-soft);}
+
+/* ---- toast ---- */
+.toast{pointer-events:none;position:fixed;left:16px;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:45;max-width:608px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 15px;font-size:14.5px;box-shadow:var(--shadow);transform:translateY(calc(100% + 140px));transition:transform .34s var(--spring);}
+.toast.up{transform:none;}
 .toast.bad{border-color:var(--danger);}
 
-.note{font-size:13px;color:var(--ink-3);margin:8px 0 0;}
-.next{border-left:3px solid var(--accent);padding-left:14px;margin:24px 0 8px;}
-.next h3{margin:0 0 4px;font-size:15px;font-weight:700;}
-.next p{margin:0;font-size:14px;color:var(--ink-2);}
-
-footer.build{
-  margin-top:28px;padding-top:16px;border-top:1px solid var(--line);
-  font-family:var(--mono);font-size:11px;color:var(--ink-3);
-  display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
-}
+footer.build{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--ink-3);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;}
 
 @media (prefers-reduced-motion: reduce){
   *{animation:none !important;transition:none !important;}
-  .bg i{animation:none !important;}
 }
 </style>
 </head>
@@ -214,207 +282,209 @@ footer.build{
 <div class="bg" id="bg" aria-hidden="true"><i></i><i></i><i></i></div>
 
 <div class="shell">
-  <header class="top">
-    <div class="wordmark">
-      <img src="icon-192.png" alt="">
-      <h1>Kit Check</h1>
-    </div>
-    <span class="sp"></span>
-  </header>
-
+  <header class="top" id="top"></header>
   <main id="main"></main>
-
-  <footer class="build">
-    <span id="buildLine">build —</span>
-    <span id="netLine">—</span>
-  </footer>
+  <footer class="build"><span id="buildLine"></span><span id="netLine"></span></footer>
 </div>
+
+<nav class="tabs" id="tabs" hidden>
+  <div class="inner">
+    <button class="tab" data-go="gigs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Gigs</button>
+    <button class="tab" data-go="gear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Gear</button>
+    <button class="tab" data-go="kits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Kits</button>
+    <button class="tab" data-go="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>More</button>
+  </div>
+</nav>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
-/* ============================================================
-   Kit Check — Phase 0 foundation
-   ============================================================ */
 "use strict";
 
-const BUILD = 1;                 // bump on EVERY deploy
+const BUILD = 2;                 // bump on EVERY deploy, in sw.js too
 const DB_NAME = "kitcheck";
 const DB_VERSION = 1;
 
-/* ---------- tiny helpers ---------- */
+const CATS = ["camera","lens","audio","power","light","grip","drone","misc"];
+const CAT_TAG = {camera:"CAM",lens:"LENS",audio:"AUD",power:"PWR",light:"LGT",grip:"GRP",drone:"DRN",misc:"—"};
+const PALETTE = ["#8b9296","#2b2f31","#3f6f8f","#7a5c3e","#4d6b4a","#8a4b52","#6b5a86","#a8813c","#b8b1a4","#c74d3c"];
+
+/* ---------- helpers ---------- */
 const $ = (s, r) => (r || document).querySelector(s);
-const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
-const fmtBytes = b => b == null ? "—" : b < 1024 ? b + " B"
-  : b < 1048576 ? (b / 1024).toFixed(1) + " KB"
-  : b < 1073741824 ? (b / 1048576).toFixed(1) + " MB"
-  : (b / 1073741824).toFixed(2) + " GB";
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid = () => { try { return crypto.randomUUID().replace(/-/g,"").slice(0,16); } catch(e){ return "x"+Math.random().toString(36).slice(2,12)+Date.now().toString(36); } };
+const now = () => new Date().toISOString();
+const fmtBytes = b => b == null ? "—" : b < 1024 ? b+" B" : b < 1048576 ? (b/1024).toFixed(1)+" KB" : b < 1073741824 ? (b/1048576).toFixed(1)+" MB" : (b/1073741824).toFixed(2)+" GB";
+const byName = (a,b) => String(a.name||"").localeCompare(String(b.name||""), undefined, {sensitivity:"base"});
+const byOrder = (a,b) => (a.order||0)-(b.order||0) || byName(a,b);
 
 let toastTimer = null;
-function toast(msg, bad) {
-  const t = $("#toast");
-  t.textContent = msg;
-  t.classList.toggle("bad", !!bad);
-  t.classList.add("up");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("up"), 3800);
-}
+function toast(msg, bad){ const t=$("#toast"); t.textContent=msg; t.classList.toggle("bad",!!bad); t.classList.add("up"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("up"),3600); }
 
-/* ---------- ambient gradient = progress (SPEC 1.1) ----------
-   Phase 1+ calls setProgress() from kit size; Phase 2 from packed/total. */
-function setProgress(p) {
-  const v = Math.max(0, Math.min(1, p || 0));
-  document.documentElement.style.setProperty("--p-op", (0.14 + v * 0.72).toFixed(3));
-}
+/* ambient gradient = progress */
+function setProgress(p){ const v=Math.max(0,Math.min(1,p||0)); document.documentElement.style.setProperty("--p-op",(0.12+v*0.78).toFixed(3)); }
 
 /* ============================================================
-   DB — IndexedDB with explicit, append-only migrations
+   DB
    ============================================================ */
 const DB = {
   _db: null,
-
-  /* Append a migration here and raise DB_VERSION by one.
-     Never edit a migration that has shipped. */
   migrations: [
-    function v1(db) {
-      db.createObjectStore("meta",       { keyPath: "key" });
-      db.createObjectStore("containers", { keyPath: "id" });
-      db.createObjectStore("items",      { keyPath: "id" }).createIndex("byContainer", "containerId");
-      db.createObjectStore("kits",       { keyPath: "id" });
-      db.createObjectStore("gigs",       { keyPath: "id" }).createIndex("byDate", "date");
-      db.createObjectStore("photos",     { keyPath: "id" });
+    function v1(db){
+      db.createObjectStore("meta",       {keyPath:"key"});
+      db.createObjectStore("containers", {keyPath:"id"});
+      db.createObjectStore("items",      {keyPath:"id"}).createIndex("byContainer","containerId");
+      db.createObjectStore("kits",       {keyPath:"id"});
+      db.createObjectStore("gigs",       {keyPath:"id"}).createIndex("byDate","date");
+      db.createObjectStore("photos",     {keyPath:"id"});
     }
   ],
-
-  open() {
-    if (this._db) return Promise.resolve(this._db);
-    return new Promise((res, rej) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = e => {
-        const db = req.result;
-        for (let v = e.oldVersion; v < DB_VERSION; v++) {
-          DB.migrations[v](db, req.transaction);
-        }
-      };
-      req.onsuccess = () => { this._db = req.result; res(this._db); };
-      req.onerror = () => rej(req.error);
-      req.onblocked = () => rej(new Error("Database blocked by another open tab."));
+  open(){
+    if(this._db) return Promise.resolve(this._db);
+    return new Promise((res,rej)=>{
+      const req=indexedDB.open(DB_NAME,DB_VERSION);
+      req.onupgradeneeded=e=>{ const db=req.result; for(let v=e.oldVersion; v<DB_VERSION; v++) DB.migrations[v](db,req.transaction); };
+      req.onsuccess=()=>{ this._db=req.result; res(this._db); };
+      req.onerror=()=>rej(req.error);
+      req.onblocked=()=>rej(new Error("Database blocked by another open tab."));
     });
   },
-
-  /* Transactions are created synchronously and used in the same turn.
-     IndexedDB deactivates a transaction as soon as control returns to the
-     event loop, so never await between creating one and using it. */
-  tx(stores, mode) {
-    if (!this._db) throw new Error("Database not open yet.");
-    return this._db.transaction(stores, mode || "readonly");
-  },
-
-  _req(store, mode, fn) {
-    return this.open().then(() => new Promise((res, rej) => {
-      const tx = this.tx([store], mode);
-      const r = fn(tx.objectStore(store));
-      r.onsuccess = () => res(r.result);
-      r.onerror = () => rej(r.error);
-      tx.onabort = () => rej(tx.error);
+  /* Transactions are created synchronously and used in the same turn. */
+  tx(stores,mode){ if(!this._db) throw new Error("Database not open yet."); return this._db.transaction(stores,mode||"readonly"); },
+  _req(store,mode,fn){
+    return this.open().then(()=>new Promise((res,rej)=>{
+      const tx=this.tx([store],mode); const r=fn(tx.objectStore(store));
+      r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); tx.onabort=()=>rej(tx.error);
     }));
   },
-
-  all(store)        { return this._req(store, "readonly",  s => s.getAll()).then(r => r || []); },
-  put(store, value) { return this._req(store, "readwrite", s => s.put(value)).then(() => value); },
-  get(store, key)   { return this._req(store, "readonly",  s => s.get(key)); },
-  del(store, key)   { return this._req(store, "readwrite", s => s.delete(key)); },
-
-  clearAll() {
-    const stores = ["meta", "containers", "items", "kits", "gigs", "photos"];
-    return this.open().then(() => new Promise((res, rej) => {
-      const tx = this.tx(stores, "readwrite");
-      stores.forEach(s => tx.objectStore(s).clear());
-      tx.oncomplete = () => res();
-      tx.onerror = () => rej(tx.error);
-      tx.onabort = () => rej(tx.error);
+  all(store){ return this._req(store,"readonly",s=>s.getAll()).then(r=>r||[]); },
+  put(store,v){ return this._req(store,"readwrite",s=>s.put(v)).then(()=>v); },
+  get(store,k){ return this._req(store,"readonly",s=>s.get(k)); },
+  del(store,k){ return this._req(store,"readwrite",s=>s.delete(k)); },
+  putMany(store,arr){
+    return this.open().then(()=>new Promise((res,rej)=>{
+      const tx=this.tx([store],"readwrite"); const os=tx.objectStore(store);
+      arr.forEach(v=>os.put(v));
+      tx.oncomplete=()=>res(arr.length); tx.onerror=()=>rej(tx.error); tx.onabort=()=>rej(tx.error);
     }));
   },
-
-  counts() {
-    const stores = ["containers", "items", "kits", "gigs", "photos"];
-    return Promise.all(stores.map(s => this.all(s).then(r => [s, r.length])))
-      .then(pairs => Object.fromEntries(pairs));
-  }
+  clearAll(){
+    const stores=["meta","containers","items","kits","gigs","photos"];
+    return this.open().then(()=>new Promise((res,rej)=>{
+      const tx=this.tx(stores,"readwrite"); stores.forEach(s=>tx.objectStore(s).clear());
+      tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); tx.onabort=()=>rej(tx.error);
+    }));
+  },
+  counts(){ const s=["containers","items","kits","gigs","photos"]; return Promise.all(s.map(n=>this.all(n).then(r=>[n,r.length]))).then(Object.fromEntries); }
 };
 
 /* ============================================================
-   Backup — export and import must round-trip photos (SPEC 6.2)
+   Store — in-memory cache of every record, write-through to DB.
+   Small data, whole thing fits in memory, so views render synchronously.
    ============================================================ */
-const blobToDataURL = b => new Promise((res, rej) => {
-  const fr = new FileReader();
-  fr.onload = () => res(fr.result);
-  fr.onerror = () => rej(fr.error);
-  fr.readAsDataURL(b);
-});
-const dataURLToBlob = async d => (await fetch(d)).blob();
-
-const Backup = {
-  async export() {
-    const stores = ["meta", "containers", "items", "kits", "gigs"];
-    const data = {};
-    for (const s of stores) data[s] = await DB.all(s);
-
-    const photos = await DB.all("photos");
-    data.photos = [];
-    for (const p of photos) {
-      data.photos.push({
-        id: p.id,
-        type: p.blob ? p.blob.type : (p.type || "image/jpeg"),
-        dataURL: p.blob ? await blobToDataURL(p.blob) : (p.dataURL || null)
-      });
-    }
-
-    return {
-      app: "kit-check",
-      formatVersion: 1,
-      build: BUILD,
-      dbVersion: DB_VERSION,
-      exportedAt: new Date().toISOString(),
-      data
-    };
+const S = { containers:{}, items:{}, kits:{}, gigs:{}, meta:{} };
+const Store = {
+  async load(){
+    for(const c of ["containers","items","kits","gigs"]){ S[c]={}; (await DB.all(c)).forEach(r=>S[c][r.id]=r); }
+    S.meta={}; (await DB.all("meta")).forEach(r=>S.meta[r.key]=r.value);
   },
+  list(c){ return Object.values(S[c]); },
+  async save(c,rec){ S[c][rec.id]=rec; try{ await DB.put(c,rec); }catch(e){ toast(saveErr(e),true); } return rec; },
+  async remove(c,id){ delete S[c][id]; try{ await DB.del(c,id); }catch(e){ toast(saveErr(e),true); } },
+  async setMeta(key,value){ S.meta[key]=value; try{ await DB.put("meta",{key,value}); }catch(e){} },
+};
+function saveErr(e){ const n=e&&e.name; if(n==="QuotaExceededError") return "Storage is full. Delete some photos or export and clear."; return "That didn't save. Try again."; }
 
-  async download() {
-    const payload = await this.export();
-    const name = "kit-check-backup-" + new Date().toISOString().slice(0, 10) + ".json";
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
+/* ============================================================
+   Photos — resize on device, store the blob, hand out object URLs
+   ============================================================ */
+const Photos = {
+  MAX: 800,
+  _urls: {},
+  async process(file){
+    const bmp = await createImageBitmap(file).catch(()=>null);
+    let src=bmp, w, h;
+    if(bmp){ w=bmp.width; h=bmp.height; }
+    else {
+      src = await new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=URL.createObjectURL(file); });
+      w=src.naturalWidth; h=src.naturalHeight;
+    }
+    const scale=Math.min(1,this.MAX/Math.max(w,h));
+    const cw=Math.max(1,Math.round(w*scale)), ch=Math.max(1,Math.round(h*scale));
+    const cv=document.createElement("canvas"); cv.width=cw; cv.height=ch;
+    cv.getContext("2d").drawImage(src,0,0,cw,ch);
+    if(bmp&&bmp.close) bmp.close();
+    const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.82));
+    if(!blob) throw new Error("Couldn't process that image.");
+    return blob;
+  },
+  async store(file){
+    const blob=await this.process(file);
+    const id=uid();
+    await DB.put("photos",{id,blob});
+    return id;
+  },
+  async url(id){
+    if(!id) return null;
+    if(this._urls[id]) return this._urls[id];
+    const rec=await DB.get("photos",id);
+    if(!rec||!rec.blob) return null;
+    this._urls[id]=URL.createObjectURL(rec.blob);
+    return this._urls[id];
+  },
+  async remove(id){ if(!id) return; try{ await DB.del("photos",id); }catch(e){} if(this._urls[id]){ URL.revokeObjectURL(this._urls[id]); delete this._urls[id]; } }
+};
+/* Fill <img data-photo=ID> elements after render. */
+async function hydratePhotos(root){
+  for(const im of $$("[data-photo]",root)){
+    const u=await Photos.url(im.dataset.photo);
+    if(u){ const img=document.createElement("img"); img.alt=""; img.src=u; im.replaceChildren(img); }
+  }
+}
+function thumb(it,lg){
+  const cls="thumb"+(lg?" lg":"");
+  if(it&&it.photoId) return `<span class="${cls}" data-photo="${esc(it.photoId)}">${esc(CAT_TAG[it.category]||"—")}</span>`;
+  return `<span class="${cls}">${esc(CAT_TAG[it&&it.category]||"—")}</span>`;
+}
+
+/* ============================================================
+   Backup
+   ============================================================ */
+const blobToDataURL = b => new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error); fr.readAsDataURL(b); });
+const dataURLToBlob = async d => (await fetch(d)).blob();
+const Backup = {
+  async export(){
+    const data={};
+    for(const s of ["meta","containers","items","kits","gigs"]) data[s]=await DB.all(s);
+    data.photos=[];
+    for(const p of await DB.all("photos")) data.photos.push({id:p.id,type:p.blob?p.blob.type:"image/jpeg",dataURL:p.blob?await blobToDataURL(p.blob):null});
+    return {app:"kit-check",formatVersion:1,build:BUILD,dbVersion:DB_VERSION,exportedAt:now(),data};
+  },
+  async download(){
+    const payload=await this.export();
+    const name="kit-check-backup-"+new Date().toISOString().slice(0,10)+".json";
+    const blob=new Blob([JSON.stringify(payload)],{type:"application/json"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),2000);
     return name;
   },
-
-  validate(payload) {
-    if (!payload || typeof payload !== "object") return "That file isn't readable.";
-    if (payload.app !== "kit-check") return "That's not a Kit Check backup.";
-    if (!payload.data || typeof payload.data !== "object") return "That backup has no data in it.";
-    if (payload.formatVersion > 1) return "That backup was made by a newer version of the app.";
+  validate(p){
+    if(!p||typeof p!=="object") return "That file isn't readable.";
+    if(p.app!=="kit-check") return "That's not a Kit Check backup.";
+    if(!p.data||typeof p.data!=="object") return "That backup has no data in it.";
+    if(p.formatVersion>1) return "That backup was made by a newer version of the app.";
     return null;
   },
-
-  /* Replaces everything. Caller confirms first. */
-  async restore(payload) {
-    const bad = this.validate(payload);
-    if (bad) throw new Error(bad);
-    const d = payload.data;
-
+  async restore(p){
+    const bad=this.validate(p); if(bad) throw new Error(bad);
+    const d=p.data;
     await DB.clearAll();
-
-    for (const s of ["meta", "containers", "items", "kits", "gigs"]) {
-      for (const row of (d[s] || [])) await DB.put(s, row);
-    }
-    for (const p of (d.photos || [])) {
-      if (!p.dataURL) continue;
-      await DB.put("photos", { id: p.id, blob: await dataURLToBlob(p.dataURL) });
-    }
+    for(const s of ["meta","containers","items","kits","gigs"]) await DB.putMany(s,d[s]||[]);
+    const photos=[]; for(const ph of (d.photos||[])) if(ph.dataURL) photos.push({id:ph.id,blob:await dataURLToBlob(ph.dataURL)});
+    await DB.putMany("photos",photos);
+    Object.keys(Photos._urls).forEach(k=>URL.revokeObjectURL(Photos._urls[k])); Photos._urls={};
+    await Store.load();
     return true;
   }
 };
@@ -422,238 +492,533 @@ const Backup = {
 /* ============================================================
    Service worker
    ============================================================ */
-const SW = { reg: null, state: "unsupported", updateReady: false };
-
-async function initSW() {
-  if (!("serviceWorker" in navigator)) return;
-  SW.state = "registering";
-  try {
-    const reg = await navigator.serviceWorker.register("sw.js");
-    SW.reg = reg;
-    SW.state = reg.active ? "active" : "installing";
-
-    reg.addEventListener("updatefound", () => {
-      const nw = reg.installing;
-      if (!nw) return;
-      nw.addEventListener("statechange", () => {
-        if (nw.state === "installed" && navigator.serviceWorker.controller) {
-          SW.updateReady = true;
-          render();
-          toast("Update ready. Reload to get it.");
-        }
-        if (nw.state === "activated") { SW.state = "active"; render(); }
+const SW={state:"unsupported",updateReady:false};
+async function initSW(){
+  if(!("serviceWorker" in navigator)) return;
+  SW.state="registering";
+  try{
+    const reg=await navigator.serviceWorker.register("sw.js");
+    SW.state=reg.active?"active":"installing";
+    reg.addEventListener("updatefound",()=>{ const nw=reg.installing; if(!nw) return;
+      nw.addEventListener("statechange",()=>{
+        if(nw.state==="installed"&&navigator.serviceWorker.controller){ SW.updateReady=true; toast("Update ready. Reload to get it."); if(route.view==="settings") render(); }
+        if(nw.state==="activated"){ SW.state="active"; if(route.view==="settings") render(); }
       });
     });
-
-    navigator.serviceWorker.addEventListener("controllerchange", () => location.reload());
-    if (reg.active) SW.state = "active";
-  } catch (e) {
-    SW.state = "failed";
-  }
-  render();
+    navigator.serviceWorker.addEventListener("controllerchange",()=>location.reload());
+  }catch(e){ SW.state="failed"; }
+  if(route.view==="settings") render();
 }
 
 /* ============================================================
    Theme
    ============================================================ */
-const Theme = {
-  get() { try { return localStorage.getItem("kc.theme") || "system"; } catch (e) { return "system"; } },
-  set(v) {
-    try { localStorage.setItem("kc.theme", v); } catch (e) {}
-    this.apply();
-  },
-  apply() {
-    const v = this.get();
-    const r = document.documentElement;
-    if (v === "system") r.removeAttribute("data-theme");
-    else r.setAttribute("data-theme", v);
-  }
+const Theme={
+  get(){ try{ return localStorage.getItem("kc.theme")||"system"; }catch(e){ return "system"; } },
+  set(v){ try{ localStorage.setItem("kc.theme",v); }catch(e){} this.apply(); },
+  apply(){ const v=this.get(), r=document.documentElement; if(v==="system") r.removeAttribute("data-theme"); else r.setAttribute("data-theme",v); }
 };
 Theme.apply();
 
 /* ============================================================
+   Router — hash based. #/gigs #/gear #/kits #/settings #/first-run
+   ============================================================ */
+const route={view:"gigs",arg:null};
+function go(view,arg){ location.hash="#/"+view+(arg?"/"+arg:""); }
+function parseHash(){
+  const m=(location.hash||"").replace(/^#\/?/,"").split("/");
+  route.view=m[0]||"gigs"; route.arg=m[1]||null;
+}
+window.addEventListener("hashchange",()=>{ parseHash(); closeSheet(); render(); window.scrollTo(0,0); });
+
+function needsFirstRun(){ return !S.meta.onboarded && Store.list("items").length===0 && Store.list("kits").length===0; }
+
+/* ============================================================
    Render
    ============================================================ */
-let diag = { counts: {}, storage: null, persisted: null };
+function render(){
+  parseHash();
+  if(needsFirstRun()&&route.view!=="first-run"&&route.view!=="settings"){ route.view="first-run"; }
+  const tabs=$("#tabs"); tabs.hidden=(route.view==="first-run");
+  $$(".tab").forEach(t=>t.classList.toggle("on",t.dataset.go===route.view));
 
-async function refreshDiag() {
-  try { diag.counts = await DB.counts(); } catch (e) { diag.counts = null; }
-  try {
-    diag.storage = navigator.storage && navigator.storage.estimate
-      ? await navigator.storage.estimate() : null;
-  } catch (e) { diag.storage = null; }
-  try {
-    diag.persisted = navigator.storage && navigator.storage.persisted
-      ? await navigator.storage.persisted() : null;
-  } catch (e) { diag.persisted = null; }
-}
-
-function render() {
-  const standalone = window.matchMedia("(display-mode: standalone)").matches
-    || window.navigator.standalone === true;
-  const c = diag.counts || {};
-  const total = (c.containers || 0) + (c.items || 0) + (c.kits || 0) + (c.gigs || 0);
-  const theme = Theme.get();
-
-  const m = $("#main");
-  m.innerHTML = `
-    <p class="eyebrow">Phase 0 · foundation</p>
-    <h2>The plumbing works. Now it needs the app.</h2>
-    <p class="lede">Storage, backup, offline and install are done and verified below.
-    Gear, kits, gigs and packing come next. See SPEC.md.</p>
-
-    <div class="card">
-      <h3>Status</h3>
-      <div class="kv">
-        <div><span>Installed to home screen</span><span class="${standalone ? "ok" : ""}">${standalone ? "yes" : "browser tab"}</span></div>
-        <div><span>Service worker</span><span class="${SW.state === "active" ? "ok" : SW.state === "failed" ? "no" : ""}">${SW.state}</span></div>
-        <div><span>Database</span><span class="ok">v${DB_VERSION}</span></div>
-        <div><span>Records stored</span><span>${total}</span></div>
-        <div><span>Photos</span><span>${c.photos || 0}</span></div>
-        <div><span>Storage used</span><span>${diag.storage ? fmtBytes(diag.storage.usage) : "—"}</span></div>
-        <div><span>Storage persistent</span><span>${diag.persisted === null ? "—" : diag.persisted ? "yes" : "best effort"}</span></div>
-      </div>
-      ${SW.updateReady ? `<button class="btn primary" id="reloadBtn" style="margin-top:12px;">Reload for update</button>` : ""}
-    </div>
-
-    <div class="card">
-      <h3>Backup</h3>
-      <button class="btn" id="exportBtn">Export backup</button>
-      <button class="btn" id="importBtn">Restore from backup</button>
-      <input type="file" id="importFile" accept="application/json,.json" hidden>
-      <p class="note">Everything lives on this device only. A backup is the only way to move
-      it to another phone or get it back if this one is wiped. Export after any big change.</p>
-    </div>
-
-    <div class="card">
-      <h3>Appearance</h3>
-      <div class="seg" id="themeSeg">
-        <button data-t="system" class="${theme === "system" ? "on" : ""}">System</button>
-        <button data-t="light"  class="${theme === "light" ? "on" : ""}">Light</button>
-        <button data-t="dark"   class="${theme === "dark" ? "on" : ""}">Dark</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Self test</h3>
-      <button class="btn" id="testBtn">Run round-trip test</button>
-      <p class="note">Writes a sample record and a sample photo, exports, wipes, restores,
-      and checks everything came back. Safe to run once there is real data, but it will
-      briefly clear the database, so export first.</p>
-    </div>
-
-    <div class="next">
-      <h3>Next: Phase 1</h3>
-      <p>First-run kit builder, gear and case management, photos with client-side resize,
-      and the gradient responding to kit size.</p>
-    </div>
-
-    <div class="card" style="border-color:transparent;background:transparent;padding:0;">
-      <button class="btn danger" id="wipeBtn">Delete all data</button>
-    </div>
-  `;
-
-  $("#exportBtn").onclick = async () => {
-    try { const n = await Backup.download(); toast("Saved " + n); }
-    catch (e) { toast("Export failed: " + e.message, true); }
-  };
-  $("#importBtn").onclick = () => $("#importFile").click();
-  $("#importFile").onchange = async ev => {
-    const f = ev.target.files && ev.target.files[0];
-    ev.target.value = "";
-    if (!f) return;
-    if (!confirm("Restoring replaces everything currently in the app. Continue?")) return;
-    try {
-      const payload = JSON.parse(await f.text());
-      await Backup.restore(payload);
-      await refreshDiag();
-      render();
-      toast("Restored from backup.");
-    } catch (e) { toast(e.message || "That backup couldn't be read.", true); }
-  };
-  $("#themeSeg").onclick = e => {
-    const b = e.target.closest("[data-t]");
-    if (!b) return;
-    Theme.set(b.dataset.t);
-    render();
-  };
-  $("#wipeBtn").onclick = async () => {
-    if (!confirm("Delete everything on this device? This cannot be undone.")) return;
-    if (!confirm("Really sure? Export a backup first if you might want it back.")) return;
-    await DB.clearAll();
-    await refreshDiag();
-    render();
-    toast("Everything deleted.");
-  };
-  $("#testBtn").onclick = runSelfTest;
-  const rb = $("#reloadBtn");
-  if (rb) rb.onclick = () => location.reload();
-
-  $("#buildLine").textContent = "build " + BUILD + " · db v" + DB_VERSION;
-  $("#netLine").textContent = navigator.onLine ? "online" : "offline · working anyway";
-
-  setProgress(total ? Math.min(1, total / 40) : 0.06);
-}
-
-/* ---------- self test: proves acceptance criterion 2 ---------- */
-async function runSelfTest() {
-  if (!confirm("This clears the database as part of the test. Export a backup first if you have real data. Continue?")) return;
-  const log = [];
-  try {
-    const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-    const id = "test_" + Date.now();
-    await DB.put("containers", { id: "test_case", name: "Test case", color: "#8b9296", order: 99 });
-    await DB.put("items", { id: id, name: "Test item", category: "misc", containerId: "test_case", photoId: id, note: "", archived: false, createdAt: new Date().toISOString() });
-    await DB.put("photos", { id: id, blob: await dataURLToBlob(png) });
-    log.push("wrote records");
-
-    const snapshot = await Backup.export();
-    log.push("exported " + (snapshot.data.items.length) + " items, " + snapshot.data.photos.length + " photos");
-
-    await DB.clearAll();
-    const empty = await DB.counts();
-    if (empty.items !== 0) throw new Error("clear did not empty the database");
-    log.push("cleared");
-
-    await Backup.restore(snapshot);
-    const back = await DB.counts();
-    const item = await DB.get("items", id);
-    const photo = await DB.get("photos", id);
-    if (!item || item.name !== "Test item") throw new Error("item did not come back");
-    if (!photo || !photo.blob || photo.blob.size < 1) throw new Error("photo did not come back");
-    log.push("restored " + back.items + " items, " + back.photos + " photos, photo is " + photo.blob.size + " bytes");
-
-    await DB.del("items", id);
-    await DB.del("photos", id);
-    await DB.del("containers", "test_case");
-
-    await refreshDiag();
-    render();
-    toast("Round trip passed. " + log.join(" · "));
-  } catch (e) {
-    toast("FAILED: " + e.message, true);
+  const top=$("#top");
+  const main=$("#main");
+  let html="";
+  if(route.view==="first-run"){ top.innerHTML=""; html=FirstRun.view(); }
+  else {
+    top.innerHTML=`<div class="wordmark"><img src="icon-192.png" alt=""><h1>Kit Check</h1></div><span class="sp"></span>`;
+    if(route.view==="gear") html=Gear.view();
+    else if(route.view==="kits") html=Kits.view();
+    else if(route.view==="settings") html=Settings.view();
+    else html=Gigs.view();
   }
+  main.innerHTML=html;
+  hydratePhotos(main);
+  if(route.view==="first-run") FirstRun.after();
+  if(route.view==="gear") Gear.after();
+
+  $("#buildLine").textContent="build "+BUILD+" · db v"+DB_VERSION;
+  $("#netLine").textContent=navigator.onLine?"online":"offline · working anyway";
+  if(route.view!=="first-run"){ const n=Store.list("items").length; setProgress(n?Math.min(1,n/40):0.06); }
 }
+
+/* ============================================================
+   First run — build your first kit (SPEC 4.1)
+   ============================================================ */
+const FirstRun={
+  step:0, kitName:"", items:[],   // items: {name, containerId, photoId, category}
+  view(){
+    if(this.step===0) return `
+      <div class="fr">
+        <div class="grow"></div>
+        <p class="eyebrow">Kit Check</p>
+        <h2>Pack against a list that knows what this shoot is.</h2>
+        <p class="lede">Your gear lives in cases. Kits are blocks you add to a gig as one decision. Anything you add just for one shoot gets pulled to the top, because that's the stuff that gets left behind.</p>
+        <p class="lede" style="margin-bottom:24px;">Start by building one kit. Two minutes.</p>
+        <button class="btn primary" data-act="fr-start">Build my first kit</button>
+        <button class="btn ghost" data-act="fr-skip" style="margin-top:8px;">Skip, start empty</button>
+      </div>`;
+    if(this.step===1) return `
+      <div class="fr">
+        <p class="eyebrow">Step 1 of 2</p>
+        <h2>Name the kit.</h2>
+        <p class="lede">A kit is a block of gear you'd grab together. Interview audio. Grip. The A-cam and everything that hangs off it.</p>
+        <div class="field"><label for="frKit">Kit name</label><input id="frKit" placeholder="Interview kit" value="${esc(this.kitName)}" autocomplete="off" enterkeyhint="next"></div>
+        <div class="grow"></div>
+        <button class="btn primary" data-act="fr-next" id="frNext">Next</button>
+      </div>`;
+    const n=this.items.length;
+    return `
+      <div class="fr">
+        <p class="eyebrow">Step 2 of 2 · ${esc(this.kitName)}</p>
+        <h2>What's in it?</h2>
+        <p class="lede">Type a name, hit return, keep going. Cases and photos can wait, or tap an item to add them now.</p>
+        <div class="addbar">
+          <input id="frItem" placeholder="Sony FX6" autocomplete="off" enterkeyhint="done" autocapitalize="words">
+          <button class="btn primary" data-act="fr-add">Add</button>
+        </div>
+        <p class="count">${n} ${n===1?"item":"items"}${n?"":" · the page fills as you add"}</p>
+        <div class="list" id="frList">
+          ${this.items.map((it,i)=>`
+            <button class="row" data-act="fr-edit" data-i="${i}">
+              ${thumb(it)}
+              <span><span class="t">${esc(it.name)}</span>
+              <span class="s">${it.containerId&&S.containers[it.containerId]?esc(S.containers[it.containerId].name):"no case yet"}</span></span>
+              <span class="chev">›</span>
+            </button>`).join("")}
+        </div>
+        <div class="grow"></div>
+        <button class="btn primary" data-act="fr-save" ${n?"":"disabled"}>Save kit${n?" · "+n+" items":""}</button>
+      </div>`;
+  },
+  after(){
+    setProgress(this.step<2?0.08:Math.min(1,this.items.length/12));
+    const k=$("#frKit"); if(k){ k.focus(); k.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); $("#frNext").click(); } }); }
+    const it=$("#frItem"); if(it){ it.focus(); it.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); FirstRun.add(); } }); }
+    hydratePhotos($("#frList"));
+  },
+  add(){
+    const inp=$("#frItem"); const v=(inp.value||"").trim(); if(!v) return;
+    this.items.push({name:v,category:guessCat(v),containerId:"",photoId:""});
+    inp.value=""; render(); $("#frItem").focus();
+  },
+  async save(){
+    const created=[];
+    for(const it of this.items){
+      const rec={id:uid(),name:it.name,category:it.category||"misc",containerId:it.containerId||"",photoId:it.photoId||"",note:"",archived:false,createdAt:now()};
+      await Store.save("items",rec); created.push(rec.id);
+    }
+    const kit={id:uid(),name:this.kitName||"My kit",itemIds:created,order:Store.list("kits").length};
+    await Store.save("kits",kit);
+    await Store.setMeta("onboarded",true);
+    this.step=0; this.items=[]; this.kitName="";
+    toast("Saved "+kit.name+". Now it needs a gig to pack against.");
+    go("gear");
+  }
+};
+function guessCat(n){
+  const s=n.toLowerCase();
+  if(/fx6|fx3|a7|camera|body|red |arri|bmpcc|c70|r5|z9|cam\b/.test(s)) return "camera";
+  if(/\d+\s?mm|lens|prime|zoom|24-70|70-200|macro/.test(s)) return "lens";
+  if(/mic|lav|shotgun|recorder|xlr|audio|headphone|boom|zoom h/.test(s)) return "audio";
+  if(/batter|v-?mount|charger|cable|power|aa\b|cord|np-f/.test(s)) return "power";
+  if(/light|aputure|amaran|molus|softbox|led|panel|tube|nanlite/.test(s)) return "light";
+  if(/tripod|stand|sandbag|clamp|slider|gimbal|apple box|c-?stand|monopod|rig|cage/.test(s)) return "grip";
+  if(/drone|dji|mavic|avata|prop/.test(s)) return "drone";
+  return "misc";
+}
+
+/* ============================================================
+   Gigs — Phase 2. Placeholder that is honest about it.
+   ============================================================ */
+const Gigs={
+  view(){
+    const kits=Store.list("kits").length, items=Store.list("items").length;
+    return `
+      <p class="eyebrow">Shoots</p>
+      <h2>Gigs land in Phase 2.</h2>
+      <p class="lede">Packing against a gig, grouped by case, with the one-offs pulled to the top. That's the next build. Right now the job is getting your gear and kits in.</p>
+      <div class="card">
+        <div class="kv">
+          <div><span>Gear entered</span><span>${items}</span></div>
+          <div><span>Kits built</span><span>${kits}</span></div>
+          <div><span>Cases set up</span><span>${Store.list("containers").length}</span></div>
+        </div>
+      </div>
+      <button class="btn primary" data-go="gear">Go to gear</button>`;
+  }
+};
+
+/* ============================================================
+   Gear — inventory grouped by case, search, add, cases (SPEC 4.4)
+   ============================================================ */
+const Gear={
+  q:"",
+  view(){
+    const items=Store.list("items").filter(i=>!i.archived), cs=Store.list("containers").sort(byOrder);
+    const q=this.q.trim().toLowerCase();
+    const shown=q?items.filter(i=>(i.name+" "+(i.note||"")+" "+(i.category||"")).toLowerCase().includes(q)):items;
+    let h=`
+      <p class="eyebrow">Inventory</p>
+      <h2>Your gear</h2>
+      <p class="lede">${items.length} ${items.length===1?"item":"items"} in ${cs.length} ${cs.length===1?"case":"cases"}. Each item has a home, so anyone on set can find it.</p>
+      <div class="btnrow"><button class="btn primary" data-act="item-new">+ Add gear</button><button class="btn" data-act="case-new">+ Add a case</button></div>
+      <div class="search" style="margin-top:12px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="gearQ" placeholder="Search gear" value="${esc(this.q)}" autocomplete="off" type="search"></div>`;
+    if(!items.length){ return h+`<div class="empty"><strong>Nothing in here yet</strong>Add a case, then the gear that lives in it.</div>`; }
+    if(!shown.length){ return h+`<div class="empty">Nothing matches "${esc(this.q)}".</div>`; }
+    const groups={}; shown.forEach(i=>{ const k=i.containerId&&S.containers[i.containerId]?i.containerId:"__none"; (groups[k]=groups[k]||[]).push(i); });
+    const order=cs.map(c=>c.id); order.push("__none");
+    order.forEach(cid=>{
+      const arr=groups[cid]; if(!arr) return;
+      const c=S.containers[cid]||{name:"Not in a case",color:"#8b9296"};
+      h+=`<p class="sectitle"><span class="swatch" style="background:${esc(c.color)}"></span>${esc(c.name)}<span class="n">${arr.length}</span></p><div class="list">`;
+      arr.sort(byName).forEach(i=>{ h+=`<button class="row" data-act="item-edit" data-id="${esc(i.id)}">${thumb(i)}<span><span class="t">${esc(i.name)}</span><span class="s">${esc(CAT_TAG[i.category]||"—")}${i.note?" · "+esc(i.note):""}</span></span><span class="chev">›</span></button>`; });
+      h+=`</div>`;
+    });
+    if(cs.length){
+      h+=`<p class="sectitle">Cases</p><div class="chips">`;
+      cs.forEach(c=>{ const n=items.filter(i=>i.containerId===c.id).length; h+=`<button class="chip" data-act="case-edit" data-id="${esc(c.id)}"><span class="swatch" style="background:${esc(c.color)}"></span>${esc(c.name)}<span class="mono" style="opacity:.7">${n}</span></button>`; });
+      h+=`</div>`;
+    }
+    return h;
+  },
+  after(){
+    const q=$("#gearQ"); if(!q) return;
+    let t=null;
+    q.addEventListener("input",()=>{ clearTimeout(t); t=setTimeout(()=>{ const pos=q.selectionStart; Gear.q=q.value; render(); const nq=$("#gearQ"); if(nq){ nq.focus(); try{ nq.setSelectionRange(pos,pos); }catch(e){} } },120); });
+  }
+};
+
+/* ============================================================
+   Kits (SPEC 4.5)
+   ============================================================ */
+const Kits={
+  view(){
+    const kits=Store.list("kits").sort(byOrder);
+    let h=`
+      <p class="eyebrow">Prebuilt</p>
+      <h2>Kits</h2>
+      <p class="lede">A kit is a block of gear you add to a gig as one decision. Interview audio. Grip. Drone.</p>
+      <button class="btn primary" data-act="kit-new">+ New kit</button>`;
+    if(!kits.length) return h+`<div class="empty" style="margin-top:12px;"><strong>No kits yet</strong>Build one from the gear you've already added.</div>`;
+    h+=`<div class="list" style="margin-top:12px;">`;
+    kits.forEach(k=>{
+      const ids=(k.itemIds||[]).filter(i=>S.items[i]);
+      const cases=new Set(ids.map(i=>S.items[i].containerId).filter(Boolean));
+      h+=`<button class="row" data-act="kit-edit" data-id="${esc(k.id)}"><span class="thumb">${ids.length}</span><span><span class="t">${esc(k.name)}</span><span class="s">${ids.length} ${ids.length===1?"item":"items"}${cases.size?" · "+cases.size+(cases.size===1?" case":" cases"):""}</span></span><span class="chev">›</span></button>`;
+    });
+    return h+`</div>`;
+  }
+};
+
+/* ============================================================
+   Settings (SPEC 4.7) + diagnostics
+   ============================================================ */
+const Settings={
+  diag:{storage:null,persisted:null},
+  async refresh(){
+    try{ this.diag.storage=navigator.storage&&navigator.storage.estimate?await navigator.storage.estimate():null; }catch(e){ this.diag.storage=null; }
+    try{ this.diag.persisted=navigator.storage&&navigator.storage.persisted?await navigator.storage.persisted():null; }catch(e){ this.diag.persisted=null; }
+  },
+  view(){
+    const standalone=window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;
+    const theme=Theme.get(), d=this.diag;
+    const c={items:Store.list("items").length,kits:Store.list("kits").length,containers:Store.list("containers").length,gigs:Store.list("gigs").length};
+    return `
+      <p class="eyebrow">More</p>
+      <h2>Settings</h2>
+      <div class="card"><h3>Backup</h3>
+        <button class="btn" data-act="export">Export backup</button>
+        <button class="btn" data-act="import">Restore from backup</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+        <p class="note">Everything lives on this phone only. A backup is the only way to move it or get it back. Export after any big change.</p>
+      </div>
+      <div class="card"><h3>Appearance</h3>
+        <div class="seg" id="themeSeg"><button data-t="system" class="${theme==="system"?"on":""}">System</button><button data-t="light" class="${theme==="light"?"on":""}">Light</button><button data-t="dark" class="${theme==="dark"?"on":""}">Dark</button></div>
+      </div>
+      <div class="card"><h3>Status</h3>
+        <div class="kv">
+          <div><span>Installed to home screen</span><span class="${standalone?"ok":""}">${standalone?"yes":"browser tab"}</span></div>
+          <div><span>Service worker</span><span class="${SW.state==="active"?"ok":SW.state==="failed"?"no":""}">${SW.state}</span></div>
+          <div><span>Database</span><span class="ok">v${DB_VERSION}</span></div>
+          <div><span>Gear · kits · cases · gigs</span><span>${c.items} · ${c.kits} · ${c.containers} · ${c.gigs}</span></div>
+          <div><span>Storage used</span><span>${d.storage?fmtBytes(d.storage.usage):"—"}</span></div>
+          <div><span>Storage persistent</span><span>${d.persisted===null?"—":d.persisted?"yes":"best effort"}</span></div>
+        </div>
+        ${SW.updateReady?`<button class="btn primary" data-act="reload" style="margin-top:12px;">Reload for update</button>`:""}
+      </div>
+      <div class="card"><h3>Developer</h3>
+        <button class="btn" data-act="selftest">Run round-trip test</button>
+        <button class="btn" data-act="seed">Load sample gear</button>
+        <button class="btn" data-act="firstrun">Show first run again</button>
+        <p class="note">Sample gear adds ~40 items, 7 cases and 8 kits so you can see the app full. Round-trip test briefly clears the database, so export first if you have real data.</p>
+      </div>
+      <button class="btn danger" data-act="wipe">Delete all data</button>`;
+  }
+};
+
+/* ============================================================
+   Sheets — bottom sheet editors
+   ============================================================ */
+let sheetSave=null;
+function sheet(title,body,onSave,saveLabel,onOpen){
+  closeSheet();
+  const scrim=document.createElement("div"); scrim.className="scrim"; scrim.id="scrim";
+  const s=document.createElement("div"); s.className="sheet"; s.id="sheet"; s.setAttribute("role","dialog"); s.setAttribute("aria-label",title);
+  s.innerHTML=`<div class="inner"><div class="grab"></div><h3>${esc(title)}</h3>${body}<div class="actions"><button class="btn ghost" id="sheetCancel">Cancel</button><button class="btn primary" id="sheetSave">${esc(saveLabel||"Save")}</button></div></div>`;
+  document.body.appendChild(scrim); document.body.appendChild(s);
+  document.body.style.overflow="hidden";
+  scrim.onclick=closeSheet; $("#sheetCancel").onclick=closeSheet;
+  sheetSave=onSave;
+  $("#sheetSave").onclick=async()=>{ const r=await onSave(); if(r!==false) closeSheet(); };
+  hydratePhotos(s);
+  if(onOpen) onOpen(s);
+  const f=s.querySelector("input:not([type=file]),select,textarea"); if(f&&!("ontouchstart" in window)) f.focus();
+}
+function closeSheet(){ const a=$("#sheet"),b=$("#scrim"); if(a) a.remove(); if(b) b.remove(); document.body.style.overflow=""; sheetSave=null; }
+const val=id=>{ const e=$("#"+id); return e?e.value.trim():""; };
+let pendingPhoto=null;
+
+function caseOptions(sel){ return `<option value="">Not in a case</option>`+Store.list("containers").sort(byOrder).map(c=>`<option value="${esc(c.id)}" ${sel===c.id?"selected":""}>${esc(c.name)}</option>`).join(""); }
+function catOptions(sel){ return CATS.map(c=>`<option value="${c}" ${sel===c?"selected":""}>${c}</option>`).join(""); }
+
+function photoField(current){
+  return `<div class="field"><label>Photo</label>
+    <div class="photo">
+      <span id="photoPreview">${current?`<span class="thumb lg" data-photo="${esc(current)}"></span>`:`<span class="thumb lg">—</span>`}</span>
+      <div><div class="fileb"><button class="btn sm" type="button">${current?"Replace photo":"Add photo"}</button><input type="file" id="photoIn" accept="image/*" capture="environment"></div>
+      <p class="note" id="photoMsg">Resized on your phone. Nothing uploads anywhere.</p></div>
+    </div></div>`;
+}
+function wirePhoto(s){
+  const fi=$("#photoIn",s); if(!fi) return;
+  fi.onchange=async()=>{
+    const f=fi.files&&fi.files[0]; if(!f) return;
+    const msg=$("#photoMsg",s); msg.textContent="Processing…";
+    try{
+      const blob=await Photos.process(f);
+      pendingPhoto={blob}; const u=URL.createObjectURL(blob);
+      $("#photoPreview",s).innerHTML=`<span class="thumb lg"><img alt="" src="${u}"></span>`;
+      msg.textContent=fmtBytes(blob.size)+" · saved when you tap Save.";
+    }catch(e){ msg.textContent="Couldn't read that image."; }
+  };
+}
+
+/* ---- item editor ---- */
+function sheetItem(it,opts){
+  opts=opts||{};
+  pendingPhoto=null;
+  const body=`<div class="fields">
+    <div class="field"><label for="iName">Name</label><input id="iName" value="${esc(it?it.name:"")}" placeholder="Sony FX6" autocapitalize="words"></div>
+    <div class="field"><label for="iCase">Lives in</label><div style="display:grid;grid-template-columns:1fr auto;gap:8px;"><select id="iCase">${caseOptions(it?it.containerId:"")}</select><button class="btn sm" type="button" id="iNewCase">New case</button></div></div>
+    <div class="field"><label for="iCat">Category</label><select id="iCat">${catOptions(it?it.category:(opts.category||"misc"))}</select></div>
+    ${photoField(it?it.photoId:"")}
+    <div class="field"><label for="iNote">Note</label><input id="iNote" value="${esc(it?it.note:"")}" placeholder="Fans broken, not for client shoots"></div>
+    ${it&&!opts.firstRun?`<button class="btn ghost danger" type="button" id="iDel">Delete this item</button>`:""}
+  </div>`;
+  sheet(it?"Edit gear":"Add gear",body,async()=>{
+    const name=val("iName"); if(!name){ toast("It needs a name."); return false; }
+    let photoId=it?it.photoId||"":"";
+    if(pendingPhoto){ const id=uid(); await DB.put("photos",{id,blob:pendingPhoto.blob}); if(photoId) await Photos.remove(photoId); photoId=id; pendingPhoto=null; }
+    if(opts.firstRun){ Object.assign(it,{name,containerId:val("iCase"),category:val("iCat")||"misc",photoId}); render(); return; }
+    const rec={id:it?it.id:uid(),name,category:val("iCat")||"misc",containerId:val("iCase"),photoId,note:val("iNote"),archived:false,createdAt:it?it.createdAt:now()};
+    await Store.save("items",rec); render(); if(!it) toast("Added "+name+".");
+  },it?"Save":"Add",s=>{
+    wirePhoto(s);
+    $("#iNewCase",s).onclick=()=>{
+      const keep={name:val("iName"),cat:val("iCat"),note:val("iNote")};
+      sheetCase(null,async c=>{ const cur=it?Object.assign({},it,keep,{containerId:c.id}):{name:keep.name,category:keep.cat,note:keep.note,containerId:c.id,photoId:""}; sheetItem(it?Object.assign(it,{containerId:c.id}):null,Object.assign({},opts,{prefill:cur})); });
+    };
+    if(opts.prefill){ $("#iName",s).value=opts.prefill.name||""; $("#iCat",s).value=opts.prefill.category||opts.prefill.cat||"misc"; $("#iNote",s).value=opts.prefill.note||""; if(opts.prefill.containerId) $("#iCase",s).value=opts.prefill.containerId; }
+    const del=$("#iDel",s); if(del) del.onclick=async()=>{ if(!confirm("Delete "+it.name+"? Kits and gigs that used it will just drop it.")) return; await Photos.remove(it.photoId); await Store.remove("items",it.id); closeSheet(); render(); toast("Deleted."); };
+  });
+}
+
+/* ---- case editor ---- */
+function sheetCase(c,onDone){
+  const body=`<div class="fields">
+    <div class="field"><label for="cName">Name</label><input id="cName" value="${esc(c?c.name:"")}" placeholder="Gray Nanuk" autocapitalize="words"></div>
+    <div class="field"><label>Colour</label><div class="chips" id="colPick">${PALETTE.map(col=>`<button type="button" class="chip${c&&c.color===col?" on":""}" data-col="${col}" style="width:46px;height:40px;background:${col};border-color:${c&&c.color===col?"var(--ink)":"transparent"};padding:0;" aria-label="${col}"></button>`).join("")}</div></div>
+    ${c?`<button class="btn ghost danger" type="button" id="cDel">Delete this case</button>`:""}
+  </div>`;
+  sheet(c?"Edit case":"Add a case or bag",body,async()=>{
+    const name=val("cName"); if(!name){ toast("It needs a name."); return false; }
+    const picked=$("#colPick .chip.on");
+    const rec={id:c?c.id:uid(),name,color:picked?picked.dataset.col:PALETTE[Store.list("containers").length%PALETTE.length],order:c?c.order:Store.list("containers").length};
+    await Store.save("containers",rec); render(); if(onDone){ closeSheet(); onDone(rec); return false; }
+  },c?"Save":"Add",s=>{
+    $("#colPick",s).addEventListener("click",e=>{ const b=e.target.closest("[data-col]"); if(!b) return; $$("#colPick .chip",s).forEach(x=>{ x.classList.remove("on"); x.style.borderColor="transparent"; }); b.classList.add("on"); b.style.borderColor="var(--ink)"; });
+    const del=$("#cDel",s); if(del) del.onclick=async()=>{
+      const n=Store.list("items").filter(i=>i.containerId===c.id).length;
+      if(!confirm("Delete "+c.name+"?"+(n?" "+n+" items will show as not in a case.":""))) return;
+      for(const i of Store.list("items")) if(i.containerId===c.id) await Store.save("items",Object.assign({},i,{containerId:""}));
+      await Store.remove("containers",c.id); closeSheet(); render(); toast("Deleted.");
+    };
+  });
+}
+
+/* ---- kit editor ---- */
+function sheetKit(k){
+  const items=Store.list("items").filter(i=>!i.archived).sort(byName);
+  const sel=new Set((k&&k.itemIds)||[]);
+  const groups={}; items.forEach(i=>{ const key=i.containerId&&S.containers[i.containerId]?i.containerId:"__none"; (groups[key]=groups[key]||[]).push(i); });
+  const order=Store.list("containers").sort(byOrder).map(c=>c.id); order.push("__none");
+  let list="";
+  order.forEach(cid=>{ const arr=groups[cid]; if(!arr) return; const c=S.containers[cid]||{name:"Not in a case",color:"#8b9296"};
+    list+=`<p class="sectitle" style="margin-top:12px;"><span class="swatch" style="background:${esc(c.color)}"></span>${esc(c.name)}</p><div class="pick">`;
+    arr.forEach(i=>{ list+=`<button type="button" class="${sel.has(i.id)?"on":""}" data-pick="${esc(i.id)}"><span class="tick">✓</span>${thumb(i)}<span><span class="t">${esc(i.name)}</span><span class="s">${esc(CAT_TAG[i.category]||"—")}</span></span></button>`; });
+    list+=`</div>`;
+  });
+  const body=`<div class="fields">
+    <div class="field"><label for="kName">Name</label><input id="kName" value="${esc(k?k.name:"")}" placeholder="Interview audio" autocapitalize="words"></div>
+    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="kQ" placeholder="Filter gear" type="search" autocomplete="off"></div>
+    <div id="kList">${items.length?list:`<div class="empty">Add some gear first.</div>`}</div>
+    <p class="note"><span id="kCount">${sel.size}</span> selected</p>
+    ${k?`<button class="btn ghost danger" type="button" id="kDel">Delete this kit</button>`:""}
+  </div>`;
+  sheet(k?"Edit kit":"New kit",body,async()=>{
+    const name=val("kName"); if(!name){ toast("It needs a name."); return false; }
+    const rec={id:k?k.id:uid(),name,itemIds:Array.from(sel),order:k?k.order:Store.list("kits").length};
+    await Store.save("kits",rec); render(); toast((k?"Saved ":"Created ")+name+".");
+  },k?"Save":"Create",s=>{
+    $("#kList",s).addEventListener("click",e=>{ const b=e.target.closest("[data-pick]"); if(!b) return; const id=b.dataset.pick; if(sel.has(id)) sel.delete(id); else sel.add(id); b.classList.toggle("on",sel.has(id)); $("#kCount",s).textContent=sel.size; });
+    $("#kQ",s).addEventListener("input",e=>{ const q=e.target.value.trim().toLowerCase(); $$("[data-pick]",s).forEach(b=>{ const i=S.items[b.dataset.pick]; b.hidden=q&&!(i.name.toLowerCase().includes(q)); }); $$(".sectitle",s).forEach(t=>{ const p=t.nextElementSibling; t.hidden=p&&!$$("[data-pick]:not([hidden])",p).length; }); });
+    const del=$("#kDel",s); if(del) del.onclick=async()=>{ if(!confirm("Delete "+k.name+"?")) return; await Store.remove("kits",k.id); closeSheet(); render(); toast("Deleted."); };
+  });
+}
+
+/* ============================================================
+   Sample data (dev) — SPEC 8
+   ============================================================ */
+const Seed={
+  async load(){
+    const C=[["Gray Nanuk","#8b9296"],["Black Nanuk","#2b2f31"],["Audio bag","#3f6f8f"],["Grip bag","#4d6b4a"],["Light case","#a8813c"],["Drone case","#6b5a86"],["Backpack","#7a5c3e"]];
+    const cs=C.map((c,i)=>({id:"s_c"+i,name:c[0],color:c[1],order:i}));
+    const I=[
+      [0,"Sony FX6","camera",""],[0,"Sony FX3","camera","B cam"],[0,"Camera cage","grip",""],[0,"Field monitor","misc",""],[0,"CFexpress cards","misc",""],[0,"Camera batteries","power",""],[0,"Battery charger","power",""],
+      [1,"10mm prime","lens",""],[1,"16mm prime","lens",""],[1,"50mm prime","lens",""],[1,"24-70 zoom","lens",""],[1,"Variable ND","misc",""],[1,"Step-up rings","misc","The one that slips"],[1,"Macro extension tube","misc",""],
+      [2,"Shotgun mic","audio",""],[2,"Lav mics","audio",""],[2,"Audio recorder","audio",""],[2,"AA batteries","power",""],[2,"XLR cables","audio",""],[2,"Headphones","audio",""],
+      [3,"Tripod","grip",""],[3,"C-stand","grip",""],[3,"Sandbags","grip","The one that slips"],[3,"Clamps","grip",""],[3,"Slider","grip",""],[3,"Gimbal","grip",""],[3,"Apple box","grip",""],
+      [4,"Aputure 700x","light","Main key"],[4,"Amaran lights","light",""],[4,"Molus G300 (A)","light",""],[4,"Molus G300 (B)","light","Fans broken, not for client shoots"],[4,"V-mount batteries","power","The one that slips"],[4,"Light stands","grip",""],[4,"Softbox","light",""],[4,"Extension cords","power",""],
+      [5,"Drone","drone",""],[5,"Drone batteries","power",""],[5,"Drone ND filters","misc",""],
+      [6,"Card reader","misc",""],[6,"Offload SSD","misc",""],[6,"Laptop","misc",""]
+    ];
+    const items=I.map((r,i)=>({id:"s_i"+i,name:r[1],category:r[2],containerId:"s_c"+r[0],photoId:"",note:r[3],archived:false,createdAt:now()}));
+    const byN=n=>items.find(i=>i.name===n).id;
+    const K=[["A-cam body kit",["Sony FX6","Camera cage","Field monitor","CFexpress cards","Camera batteries","Battery charger"]],["B-cam",["Sony FX3","CFexpress cards","Camera batteries"]],["Lens set",["10mm prime","16mm prime","50mm prime","24-70 zoom","Variable ND","Step-up rings"]],["Interview audio",["Shotgun mic","Lav mics","Audio recorder","AA batteries","XLR cables","Headphones"]],["Grip block",["Tripod","C-stand","Sandbags","Clamps","Apple box"]],["Three-point lighting",["Aputure 700x","Amaran lights","Softbox","Light stands","V-mount batteries","Extension cords"]],["Drone",["Drone","Drone batteries","Drone ND filters"]],["Offload",["Card reader","Offload SSD","Laptop"]]];
+    const kits=K.map((k,i)=>({id:"s_k"+i,name:k[0],itemIds:k[1].map(byN),order:i}));
+    await DB.putMany("containers",cs); await DB.putMany("items",items); await DB.putMany("kits",kits);
+    await DB.put("meta",{key:"onboarded",value:true});
+    await Store.load();
+  }
+};
+
+/* ============================================================
+   Self test
+   ============================================================ */
+async function runSelfTest(){
+  if(!confirm("This clears the database as part of the test. Export a backup first if you have real data. Continue?")) return;
+  try{
+    const png="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const id="test_"+Date.now();
+    await DB.put("containers",{id:"test_case",name:"Test case",color:"#8b9296",order:99});
+    await DB.put("items",{id,name:"Test item",category:"misc",containerId:"test_case",photoId:id,note:"",archived:false,createdAt:now()});
+    await DB.put("photos",{id,blob:await dataURLToBlob(png)});
+    const snap=await Backup.export();
+    await DB.clearAll();
+    if((await DB.counts()).items!==0) throw new Error("clear did not empty the database");
+    await Backup.restore(snap);
+    const item=await DB.get("items",id), photo=await DB.get("photos",id);
+    if(!item||item.name!=="Test item") throw new Error("item did not come back");
+    if(!photo||!photo.blob||photo.blob.size<1) throw new Error("photo did not come back");
+    await DB.del("items",id); await DB.del("photos",id); await DB.del("containers","test_case");
+    await Store.load(); await Settings.refresh(); render();
+    toast("Round trip passed. Photo came back as "+photo.blob.size+" bytes.");
+  }catch(e){ toast("FAILED: "+e.message,true); }
+}
+
+/* ============================================================
+   Events
+   ============================================================ */
+document.addEventListener("click",async e=>{
+  const g=e.target.closest("[data-go]"); if(g){ go(g.dataset.go); return; }
+  const t=e.target.closest("[data-act]"); if(!t) return;
+  const act=t.dataset.act, id=t.dataset.id;
+
+  /* first run */
+  if(act==="fr-start"){ FirstRun.step=1; render(); return; }
+  if(act==="fr-skip"){ await Store.setMeta("onboarded",true); go("gear"); return; }
+  if(act==="fr-next"){ const v=val("frKit"); if(!v){ toast("Give the kit a name."); return; } FirstRun.kitName=v; FirstRun.step=2; render(); return; }
+  if(act==="fr-add"){ FirstRun.add(); return; }
+  if(act==="fr-edit"){ const it=FirstRun.items[+t.dataset.i]; sheetItem(it,{firstRun:true}); return; }
+  if(act==="fr-save"){ await FirstRun.save(); return; }
+
+  /* gear */
+  if(act==="item-new") return sheetItem(null);
+  if(act==="item-edit") return sheetItem(S.items[id]);
+  if(act==="case-new") return sheetCase(null);
+  if(act==="case-edit") return sheetCase(S.containers[id]);
+
+  /* kits */
+  if(act==="kit-new") return sheetKit(null);
+  if(act==="kit-edit") return sheetKit(S.kits[id]);
+
+  /* settings */
+  if(act==="export"){ try{ toast("Saved "+await Backup.download()); }catch(err){ toast("Export failed: "+err.message,true); } return; }
+  if(act==="import"){ $("#importFile").click(); return; }
+  if(act==="reload"){ location.reload(); return; }
+  if(act==="selftest"){ runSelfTest(); return; }
+  if(act==="seed"){ if(!confirm("Add sample gear, cases and kits? It mixes in with anything you already have.")) return; await Seed.load(); render(); toast("Sample gear loaded."); return; }
+  if(act==="firstrun"){ await Store.setMeta("onboarded",false); FirstRun.step=0; go("first-run"); return; }
+  if(act==="wipe"){
+    if(!confirm("Delete everything on this phone? This cannot be undone.")) return;
+    if(!confirm("Really sure? Export a backup first if you might want it back.")) return;
+    await DB.clearAll(); await Store.load(); Object.keys(Photos._urls).forEach(k=>URL.revokeObjectURL(Photos._urls[k])); Photos._urls={}; FirstRun.step=0; render(); toast("Everything deleted."); return;
+  }
+});
+document.addEventListener("change",async e=>{
+  if(e.target.id==="importFile"){
+    const f=e.target.files&&e.target.files[0]; e.target.value=""; if(!f) return;
+    if(!confirm("Restoring replaces everything currently in the app. Continue?")) return;
+    try{ await Backup.restore(JSON.parse(await f.text())); await Settings.refresh(); render(); toast("Restored from backup."); }
+    catch(err){ toast(err.message||"That backup couldn't be read.",true); }
+  }
+});
+document.addEventListener("click",e=>{ const b=e.target.closest("#themeSeg [data-t]"); if(b){ Theme.set(b.dataset.t); render(); } });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeSheet(); });
+window.addEventListener("online",()=>render()); window.addEventListener("offline",()=>render());
 
 /* ============================================================
    Boot
    ============================================================ */
-window.addEventListener("online",  () => render());
-window.addEventListener("offline", () => render());
-
-(async function boot() {
-  try {
-    await DB.open();
-  } catch (e) {
-    $("#main").innerHTML = '<div class="card"><h3>Storage unavailable</h3>'
-      + '<p class="note">This browser blocked local storage, so nothing can be saved. '
-      + 'Private browsing is the usual cause.</p></div>';
-    return;
-  }
-  try {
-    if (navigator.storage && navigator.storage.persist) await navigator.storage.persist();
-  } catch (e) {}
-  await refreshDiag();
+(async function boot(){
+  try{ await DB.open(); }
+  catch(e){ $("#main").innerHTML='<div class="card"><h3>Storage unavailable</h3><p class="note">This browser blocked local storage, so nothing can be saved. Private browsing is the usual cause.</p></div>'; return; }
+  try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
+  await Store.load();
+  await Settings.refresh();
+  if(new URLSearchParams(location.search).get("seed")==="1"&&Store.list("items").length===0){ await Seed.load(); }
   render();
   initSW();
 })();
