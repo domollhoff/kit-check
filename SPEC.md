@@ -274,7 +274,7 @@ Gigs list, gig creation with kit selection, the pack screen with case grouping, 
 
 *Done when:* he can pack a real shoot end to end.
 
-**Phase 3: the identity pass**
+**Phase 3: the identity pass** (partly pulled forward after Phase 1, on Dom's feedback that the plain version felt stale: fonts, glass surfaces, gradient, swipe navigation, page transitions, stagger, pop, sheet drag are done; the pack-screen moments below still belong here)
 The full state-driven gradient. The tick animation. FLIP group collapse. Completion bloom. Load-out card. Sheet springs. Reduced-motion paths for all of it. The 60fps check on a real phone.
 
 *Done when:* it stops looking like a prototype.

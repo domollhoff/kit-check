@@ -11,7 +11,7 @@ const http = require("http"), fs = require("fs"), path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const PORT = 8123;
-const TYPES = { ".html":"text/html", ".js":"text/javascript", ".png":"image/png", ".webmanifest":"application/manifest+json", ".json":"application/json", ".css":"text/css", ".svg":"image/svg+xml" };
+const TYPES = { ".html":"text/html", ".js":"text/javascript", ".png":"image/png", ".webmanifest":"application/manifest+json", ".json":"application/json", ".css":"text/css", ".svg":"image/svg+xml", ".woff2":"font/woff2" };
 
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split("?")[0]); if (p === "/") p = "/index.html";
@@ -169,6 +169,67 @@ const server = http.createServer((req, res) => {
   const htmlBuild = (fs.readFileSync(path.join(ROOT, "index.html"), "utf8").match(/const BUILD = (\d+)/) || [])[1];
   const swBuild = (fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").match(/const BUILD = (\d+)/) || [])[1];
   htmlBuild === swBuild ? ok("BUILD matches in index.html and sw.js (" + htmlBuild + ")") : bad("BUILD MISMATCH " + htmlBuild + " vs " + swBuild);
+
+  /* ===================== Motion & identity ===================== */
+  await page.click("[data-go=gear]"); await page.waitForTimeout(500);
+  const fonts = await page.evaluate(async () => { await document.fonts.ready; return { display: document.fonts.check('800 20px "Archivo"'), mono: document.fonts.check('600 12px "Plex Mono"') }; });
+  (fonts.display && fonts.mono) ? ok("self-hosted fonts loaded (Archivo, Plex Mono)") : bad("fonts not loaded: " + JSON.stringify(fonts));
+
+  const h2font = await page.evaluate(() => getComputedStyle(document.querySelector("h2")).fontFamily);
+  /Archivo/.test(h2font) ? ok("headings use the display face") : bad("h2 font: " + h2font);
+
+  const stag = await page.$$eval("#main .row", els => els.slice(0, 3).map(e => getComputedStyle(e).animationDelay));
+  (stag.length === 3 && stag[0] !== stag[2]) ? ok("rows stagger in (" + stag.join(", ") + ")") : bad("no stagger: " + stag);
+
+  /* swipe right-to-left on gear should land on kits */
+  const swiped = await page.evaluate(async () => {
+    const main = document.getElementById("main");
+    const mk = (type, x, y) => new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === "touchend" ? [] : [new Touch({ identifier: 1, target: main, clientX: x, clientY: y })] });
+    main.dispatchEvent(mk("touchstart", 300, 400));
+    for (let x = 300; x >= 120; x -= 30) { main.dispatchEvent(mk("touchmove", x, 402)); await new Promise(r => setTimeout(r, 12)); }
+    const mid = main.style.transform;
+    main.dispatchEvent(mk("touchend", 120, 402));
+    await new Promise(r => setTimeout(r, 700));
+    return { mid, hash: location.hash, transformAfter: main.style.transform };
+  });
+  (/translateX\(-/.test(swiped.mid) && /kits/.test(swiped.hash) && swiped.transformAfter === "")
+    ? ok("swipe follows the finger and commits to the next tab") : bad("swipe: " + JSON.stringify(swiped));
+
+  /* vertical drag must NOT navigate */
+  const vert = await page.evaluate(async () => {
+    const main = document.getElementById("main");
+    const mk = (type, x, y) => new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === "touchend" ? [] : [new Touch({ identifier: 1, target: main, clientX: x, clientY: y })] });
+    main.dispatchEvent(mk("touchstart", 200, 300));
+    for (let y = 300; y <= 500; y += 40) main.dispatchEvent(mk("touchmove", 204, y));
+    main.dispatchEvent(mk("touchend", 204, 500));
+    await new Promise(r => setTimeout(r, 300));
+    return { hash: location.hash, t: main.style.transform };
+  });
+  (/kits/.test(vert.hash) && !vert.t) ? ok("vertical drag leaves navigation alone") : bad("vertical drag: " + JSON.stringify(vert));
+
+  /* tab indicator moved */
+  const ind = await page.evaluate(() => document.getElementById("tabInd").style.transform);
+  /200%|2 \*/.test(ind) ? ok("tab indicator tracks the active tab") : bad("indicator: " + ind);
+
+  /* sheet: drag down dismisses */
+  await page.click("[data-act=kit-new]"); await page.waitForTimeout(450);
+  const dismissed = await page.evaluate(async () => {
+    const s = document.getElementById("sheet"); if (!s) return "no sheet";
+    const mk = (type, y) => new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === "touchend" ? [] : [new Touch({ identifier: 1, target: s, clientX: 200, clientY: y })] });
+    s.dispatchEvent(mk("touchstart", 100));
+    for (let y = 100; y <= 300; y += 40) s.dispatchEvent(mk("touchmove", y));
+    s.dispatchEvent(mk("touchend", 300));
+    await new Promise(r => setTimeout(r, 400));
+    return document.getElementById("sheet") ? "still open" : "closed";
+  });
+  dismissed === "closed" ? ok("sheet dismisses on drag down") : bad("sheet drag: " + dismissed);
+
+  /* a new item pops */
+  await page.click("[data-go=gear]"); await page.waitForTimeout(500);
+  await page.click("[data-act=item-new]"); await page.fill("#iName", "Popper"); await page.click("#sheetSave"); await page.waitForTimeout(150);
+  const popped = await page.$$eval("#main .row.new .t", els => els.map(e => e.textContent.trim()));
+  (popped.length === 1 && popped[0] === "Popper") ? ok("newly added item gets the pop animation") : bad("pop: " + JSON.stringify(popped));
+  await page.waitForTimeout(500);
 
   /* tap targets on the gear list */
   await page.click("[data-go=gear]"); await page.waitForTimeout(300);

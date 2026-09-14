@@ -2,7 +2,7 @@
    Cache name keys off BUILD. Bump BUILD in BOTH sw.js and index.html on every
    deploy, or the update will not land on an installed home-screen app. */
 
-const BUILD = 2;
+const BUILD = 3;
 const CACHE = "kit-check-v" + BUILD;
 
 const SHELL = [
@@ -11,7 +11,10 @@ const SHELL = [
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png",
-  "./icon-maskable.png"
+  "./icon-maskable.png",
+  "./fonts/archivo-var.woff2",
+  "./fonts/plexmono-400.woff2",
+  "./fonts/plexmono-600.woff2"
 ];
 
 self.addEventListener("install", e => {

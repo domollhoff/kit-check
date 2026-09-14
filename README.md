@@ -7,8 +7,11 @@ Full requirements are in **SPEC.md**. Read that before changing anything.
 
 ## Status
 
-**Phase 0 complete.** Foundation only: storage, backup, offline, install, theming.
-No gear, kits, gigs or packing yet. That is Phase 1 and 2.
+**Phase 1 complete, plus the motion and identity foundation.** Gear, cases, kits, photos,
+first-run kit builder, swipe navigation, page transitions. Gigs and packing are Phase 2.
+
+Fonts are self-hosted in `fonts/` (Archivo variable, IBM Plex Mono, both OFL) so they
+work offline. They are listed in the service worker shell.
 
 ## Running it
 
