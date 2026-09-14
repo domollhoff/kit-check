@@ -30,7 +30,11 @@ Everything else in this spec is in service of those two sentences.
 
 Dom picked three directions at once and they are reconcilable: **instrument precision, native-app polish, and usable at 6am in a garage.** Plus one specific idea of his own that should become the app's signature.
 
-### 1.1 The gradient is the progress bar
+### 1.1 The gradient and the rings (revised after Dom's references)
+
+Revised after three rounds of feedback. The look is now: Airbnb layout and air (white, spacious, shadows not borders, a friendly rounded sans in sentence case, small illustrations for warmth), Strava colour and weight (one bold accent, big numerals, chunky pill buttons, a full-bleed colour panel that peels away, an oversized punch on completion), and Apple Fitness rings for packing. The accent is cobalt. The original gradient-is-the-progress-bar rule below is superseded: the gradient lives in one hero blob on the Home dashboard and on the first-run panel and grows with the inventory; three rings (packed, one-offs, cases loaded) own the pack screen, each fading red to green as it fills, with a strip of half-ring gauges per case beneath. The rest of this section is kept for history.
+
+#### The original gradient rule
 
 His idea, and it is the right one. Build the whole visual identity around it.
 

@@ -7,11 +7,12 @@ Full requirements are in **SPEC.md**. Read that before changing anything.
 
 ## Status
 
-**Phase 1 complete, plus the motion and identity foundation.** Gear, cases, kits, photos,
-first-run kit builder, swipe navigation, page transitions. Gigs and packing are Phase 2.
+**Phase 2 complete on the revised design.** Home dashboard, gigs, the pack screen with rings,
+gear, cases, kits, photos, first run, swipe navigation, page transitions. See SPEC.md 1.1 for
+the design direction as revised from Dom's references.
 
-Fonts are self-hosted in `fonts/` (Archivo variable, IBM Plex Mono, both OFL) so they
-work offline. They are listed in the service worker shell.
+The typeface is self-hosted in `fonts/` (Plus Jakarta Sans variable, OFL) so it works
+offline. It is listed in the service worker shell.
 
 ## Running it
 
