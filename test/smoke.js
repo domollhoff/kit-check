@@ -1,4 +1,4 @@
-/* Case Check smoke test.
+/* Kit Check smoke test.
    Serves the repo and drives it in a headless browser. Run it after ANY change
    to the data layer, the service worker, or the theme tokens.
 

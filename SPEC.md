@@ -1,6 +1,6 @@
 # Pack list app: build spec
 
-Working name: **Case Check**. Not final. Alternatives worth trying: Loadout, Stowed, Casefile, Nanuk. Pick one before Phase 1 and use it consistently.
+Name: **Kit Check**. Repo `kit-check`.
 
 Owner: Dom Borka, Nrth Media. Solo videographer, Minneapolis. He is the only user of v1.
 

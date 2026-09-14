@@ -7,11 +7,11 @@
 <meta name="theme-color" content="#101416" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Case Check">
+<meta name="apple-mobile-web-app-title" content="Kit Check">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
-<title>Case Check</title>
+<title>Kit Check</title>
 
 <!--
   PHASE 0 FOUNDATION. See SPEC.md.
@@ -217,7 +217,7 @@ footer.build{
   <header class="top">
     <div class="wordmark">
       <img src="icon-192.png" alt="">
-      <h1>Case Check</h1>
+      <h1>Kit Check</h1>
     </div>
     <span class="sp"></span>
   </header>
@@ -234,12 +234,12 @@ footer.build{
 
 <script>
 /* ============================================================
-   Case Check — Phase 0 foundation
+   Kit Check — Phase 0 foundation
    ============================================================ */
 "use strict";
 
 const BUILD = 1;                 // bump on EVERY deploy
-const DB_NAME = "casecheck";
+const DB_NAME = "kitcheck";
 const DB_VERSION = 1;
 
 /* ---------- tiny helpers ---------- */
@@ -371,7 +371,7 @@ const Backup = {
     }
 
     return {
-      app: "case-check",
+      app: "kit-check",
       formatVersion: 1,
       build: BUILD,
       dbVersion: DB_VERSION,
@@ -382,7 +382,7 @@ const Backup = {
 
   async download() {
     const payload = await this.export();
-    const name = "case-check-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    const name = "kit-check-backup-" + new Date().toISOString().slice(0, 10) + ".json";
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -394,7 +394,7 @@ const Backup = {
 
   validate(payload) {
     if (!payload || typeof payload !== "object") return "That file isn't readable.";
-    if (payload.app !== "case-check") return "That's not a Case Check backup.";
+    if (payload.app !== "kit-check") return "That's not a Kit Check backup.";
     if (!payload.data || typeof payload.data !== "object") return "That backup has no data in it.";
     if (payload.formatVersion > 1) return "That backup was made by a newer version of the app.";
     return null;
@@ -457,9 +457,9 @@ async function initSW() {
    Theme
    ============================================================ */
 const Theme = {
-  get() { try { return localStorage.getItem("cc.theme") || "system"; } catch (e) { return "system"; } },
+  get() { try { return localStorage.getItem("kc.theme") || "system"; } catch (e) { return "system"; } },
   set(v) {
-    try { localStorage.setItem("cc.theme", v); } catch (e) {}
+    try { localStorage.setItem("kc.theme", v); } catch (e) {}
     this.apply();
   },
   apply() {

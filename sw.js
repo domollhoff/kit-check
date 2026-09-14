@@ -1,9 +1,9 @@
-/* Case Check service worker — Phase 0
+/* Kit Check service worker — Phase 0
    Cache name keys off BUILD. Bump BUILD in BOTH sw.js and index.html on every
    deploy, or the update will not land on an installed home-screen app. */
 
 const BUILD = 1;
-const CACHE = "case-check-v" + BUILD;
+const CACHE = "kit-check-v" + BUILD;
 
 const SHELL = [
   "./",

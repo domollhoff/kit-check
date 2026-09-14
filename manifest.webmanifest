@@ -1,6 +1,6 @@
 {
-  "name": "Case Check",
-  "short_name": "Case Check",
+  "name": "Kit Check",
+  "short_name": "Kit Check",
   "description": "Pack list for shoots. Gear lives in cases, kits compose per gig.",
   "start_url": "./",
   "scope": "./",

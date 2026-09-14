@@ -1,4 +1,4 @@
-# Case Check
+# Kit Check
 
 Pack list for video shoots. Gear lives in cases, kits compose per gig, and the
 things you added just for this shoot get surfaced so they stop getting left behind.
