@@ -1,0 +1,14 @@
+{
+  "name": "case-check",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pack list for video shoots. Static PWA, no build step.",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node test/smoke.js",
+    "postinstall": "playwright install chromium"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
