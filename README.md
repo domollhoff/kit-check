@@ -65,9 +65,14 @@ Schema changes are append-only. To add a store or an index:
 Settings has Export and Restore. Export writes a single JSON file containing
 every record plus photos as data URLs. Restore replaces everything.
 
-**Run the self test after any change to the data layer.** It writes a record and
-a photo, exports, wipes, restores, and verifies both came back. It is the only
-thing standing between a schema mistake and a lost gear library.
+**Run the tests after any change to the data layer.** There are two:
+
+- In the app, Settings, "Run round-trip test". Quick, manual, runs on the real device.
+- `npm test`. Headless, covers all ten Phase 0 acceptance criteria including the
+  backup round trip with a photo, offline open, both themes, layout down to 320px,
+  and whether `BUILD` matches between `index.html` and `sw.js`.
+
+These are the only thing standing between a schema mistake and a lost gear library.
 
 ## Conventions
 
@@ -78,3 +83,14 @@ thing standing between a schema mistake and a lost gear library.
 - Never `await` between creating an IndexedDB transaction and using it.
 - Minimum tap target 44px, minimum pack-screen row 56px.
 - Everything animated needs a `prefers-reduced-motion` path.
+
+## Tests
+
+```
+npm install     # installs playwright and a headless chromium, dev only
+npm test
+```
+
+Writes `test/screenshot.png` so you can see what it saw. Ten checks, all of which
+map to the acceptance criteria in SPEC.md section 6. It exits non-zero on failure,
+so it works as a pre-deploy gate.
