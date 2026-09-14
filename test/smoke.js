@@ -53,10 +53,15 @@ const server = http.createServer((req, res) => {
 
   await page.click("[data-act=fr-start]");
   await page.fill("#frKit", "Interview kit"); await page.click("#frNext");
-  for (const n of ["Sony FX6", "Shotgun mic", "Lav mics"]) { await page.fill("#frItem", n); await page.press("#frItem", "Enter"); await wait(80); }
+  await page.fill("#frItem", "Sony FX6"); await page.press("#frItem", "Enter"); await wait(80);
+  const firstRowMark = await page.evaluate(() => { const r = document.querySelector("#frList .row"); r.dataset.mark = "kept"; return getComputedStyle(document.querySelector("#frHero .blobs")).transform; });
+  for (const n of ["Shotgun mic", "Lav mics"]) { await page.fill("#frItem", n); await page.press("#frItem", "Enter"); await wait(80); }
   (await page.locator("#frList .row").count()) === 3 ? ok("first run: 3 items added by typing") : bad("first run rows wrong");
-  const strip = await page.evaluate(() => getComputedStyle(document.querySelector(".fr .strip i")).width);
-  parseFloat(strip) > 10 ? ok("first-run strip fills as items are added (" + strip + ")") : bad("strip did not fill: " + strip);
+  const kept = await page.evaluate(() => !!document.querySelector('#frList .row[data-mark="kept"]'));
+  kept ? ok("first-run list patches in place, existing rows are not rebuilt") : bad("first-run list was rebuilt on add");
+  await wait(900);
+  const heroT = await page.evaluate(() => ({ fill: getComputedStyle(document.querySelector("#frHero")).getPropertyValue("--fill").trim(), tf: getComputedStyle(document.querySelector("#frHero .blobs")).transform }));
+  (parseFloat(heroT.fill) > 0.2 && heroT.tf !== firstRowMark) ? ok("first-run gradient band grows and drifts as items are added") : bad("band: " + JSON.stringify(heroT) + " vs " + firstRowMark);
   await page.click("[data-act=fr-save]"); await wait(700);
   const afterFR = await page.evaluate(async () => ({ items: (await DB.all("items")).length, kits: await DB.all("kits"), meta: await DB.get("meta", "onboarded"), hash: location.hash }));
   (afterFR.items === 3 && afterFR.kits.length === 1 && afterFR.kits[0].itemIds.length === 3 && afterFR.meta && afterFR.meta.value === true) ? ok("first run saved 1 kit with 3 items") : bad("first run save wrong: " + JSON.stringify(afterFR));
@@ -116,11 +121,16 @@ const server = http.createServer((req, res) => {
   /Next shoot/.test(await page.textContent(".hero")) ? ok("home hero shows the next shoot") : bad("hero missing next shoot");
   await page.click(".hero [data-go=gig]"); await wait(450);
 
-  /* tick one */
+  /* tick one: the existing ring and row must be patched, not rebuilt, so CSS transitions run */
+  await page.evaluate(() => { document.querySelector("#rings circle.ar").dataset.mark = "kept"; document.querySelectorAll("#main .row.pack").forEach((r, i) => r.dataset.mark = "r" + i); });
   await page.click("#main .row.pack >> nth=0"); await wait(450);
   const off1 = await page.$eval("#rings circle.ar", c => parseFloat(c.getAttribute("stroke-dashoffset")));
   off1 < off0 ? ok("ticking an item advances the outer ring (" + off0.toFixed(0) + " → " + off1.toFixed(0) + ")") : bad("ring did not advance");
   (await page.locator("#main .row.pack.done").count()) === 1 ? ok("ticked row shows done") : bad("row not done");
+  const same = await page.evaluate(() => ({ ring: document.querySelector('#rings circle.ar[data-mark="kept"]') !== null, rows: document.querySelectorAll('#main .row.pack[data-mark]').length }));
+  (same.ring && same.rows >= 4) ? ok("tick patches the ring and rows in place, nothing rebuilt") : bad("tick rebuilt the screen: " + JSON.stringify(same));
+  const ringTransition = await page.evaluate(() => getComputedStyle(document.querySelector("#rings circle.ar")).transitionDuration);
+  /0\.[5-9]|1\./.test(ringTransition) ? ok("ring has a transition to animate through (" + ringTransition + ")") : bad("ring transition: " + ringTransition);
 
   /* one-off: first make sure there is something not already on the gig */
   await page.evaluate(() => Store.save("items", { id: "x_slider", name: "Slider", category: "grip", containerId: "", photoId: "", note: "", archived: false, createdAt: new Date().toISOString() }));

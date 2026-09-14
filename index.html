@@ -140,7 +140,7 @@ h2{font-size:22px;font-weight:800;letter-spacing:-.025em;margin:0 0 4px;line-hei
   color:#222222;padding:22px 22px 20px;display:flex;flex-direction:column;justify-content:flex-end;gap:10px;
   box-shadow:var(--sh-2);background:var(--blob-a);isolation:isolate;
 }
-.hero .blobs{position:absolute;inset:-30%;z-index:-1;transition:transform 1.4s var(--ease);transform:scale(calc(.62 + var(--fill,0) * .75));transform-origin:70% 60%;}
+.hero .blobs{position:absolute;inset:-30%;z-index:-1;transition:transform 1.6s var(--spring);transform:translate(calc(var(--mx,0) * 1px),calc(var(--my,0) * 1px)) scale(calc(.62 + var(--fill,0) * .75));transform-origin:70% 60%;}
 .hero .blobs i{position:absolute;border-radius:50%;filter:blur(38px);opacity:.95;will-change:transform;}
 .hero .blobs i:nth-child(1){width:70%;height:70%;left:0;top:10%;background:var(--blob-a);animation:h1 14s var(--ease) infinite alternate;}
 .hero .blobs i:nth-child(2){width:60%;height:60%;right:0;top:0;background:var(--blob-b);animation:h2 17s var(--ease) infinite alternate;}
@@ -372,8 +372,14 @@ h2{font-size:22px;font-weight:800;letter-spacing:-.025em;margin:0 0 4px;line-hei
 .fr0 .btn.ghost{background:rgba(34,34,34,.12);color:#222222;box-shadow:none;margin-top:8px;}
 .fr{min-height:calc(100vh - 180px);display:flex;flex-direction:column;}
 .fr .grow{flex:1;}
-.fr .strip{height:10px;border-radius:99px;background:var(--well);overflow:hidden;margin:10px 0 18px;}
-.fr .strip i{display:block;height:100%;width:calc(var(--fill,0) * 100%);border-radius:99px;background:linear-gradient(90deg,var(--blob-a),var(--blob-b),var(--blob-c));transition:width .8s var(--spring);}
+.fr0{view-transition-name:blob;}
+.hero.frh{view-transition-name:blob;min-height:112px;padding:16px 18px 14px;margin:8px 0 18px;justify-content:flex-end;}
+.hero.frh .k{font-size:22px;font-weight:800;letter-spacing:-.03em;line-height:1;}
+.hero.frh .m{font-size:13px;font-weight:700;opacity:.8;margin-top:2px;}
+.hero.frh .blobs{transform-origin:80% 70%;}
+::view-transition-group(blob){animation-duration:.55s;animation-timing-function:var(--spring);}
+::view-transition-old(blob),::view-transition-new(blob){animation:none;mix-blend-mode:normal;height:100%;overflow:hidden;}
+.still .row,.still .tile{animation:none !important;}
 .addbar{display:grid;grid-template-columns:1fr auto;gap:8px;}
 .addbar .btn{margin:0;width:auto;}
 .fr .list{margin-top:6px;}
@@ -470,7 +476,7 @@ html[data-dir="fade"]::view-transition-new(main){animation-name:rise;animation-d
 <script>
 "use strict";
 
-const BUILD = 5;                 // bump on EVERY deploy, in sw.js too
+const BUILD = 6;                 // bump on EVERY deploy, in sw.js too
 const DB_NAME = "kitcheck";
 const DB_VERSION = 1;
 
@@ -640,21 +646,22 @@ const heat = p => `hsl(${Math.round(4+136*Math.max(0,Math.min(1,p)))} 78% ${p>=1
 /* ============================================================
    Rings
    ============================================================ */
-function ringsSVG(prog){
-  const C=r=>2*Math.PI*r;
-  const arcs=[
+function ringArcs(prog){
+  return [
     {r:74,p:prog.total?prog.done/prog.total:0,on:prog.total>0},
     {r:56,p:prog.exTotal?prog.exDone/prog.exTotal:0,on:prog.exTotal>0},
     {r:38,p:prog.cTotal?prog.cDone/prog.cTotal:0,on:prog.cTotal>0&&prog.full},
-  ];
+  ].map(a=>Object.assign(a,{c:2*Math.PI*a.r,col:a.on?heat(a.p):"transparent",off:(2*Math.PI*a.r*(1-(a.on?a.p:0))).toFixed(1)}));
+}
+function ringsSVG(prog){
   let h=`<svg viewBox="0 0 168 168">`;
-  arcs.forEach(a=>{ const c=C(a.r); h+=`<circle class="tr" cx="84" cy="84" r="${a.r}" stroke-width="14"/>`;
-    h+=`<circle class="ar" cx="84" cy="84" r="${a.r}" stroke-width="14" stroke="${a.on?heat(a.p):"transparent"}" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c*(1-(a.on?a.p:0))).toFixed(1)}" style="color:${a.on?heat(a.p):"transparent"}"/>`; });
+  ringArcs(prog).forEach(a=>{ h+=`<circle class="tr" cx="84" cy="84" r="${a.r}" stroke-width="14"/><circle class="ar" cx="84" cy="84" r="${a.r}" stroke-width="14" stroke="${a.col}" stroke-dasharray="${a.c.toFixed(1)}" stroke-dashoffset="${a.off}" style="color:${a.col}"/>`; });
   h+=`</svg><div class="mid"><b class="num">${prog.total?Math.round(prog.done/prog.total*100)+"%":"—"}</b></div>`;
   return h;
 }
+const gaugeLen=Math.PI*24;
 function miniSVG(p,on){ const r=18,c=2*Math.PI*r; return `<svg viewBox="0 0 44 44"><circle class="tr" cx="22" cy="22" r="${r}" stroke-width="6"/><circle class="ar" cx="22" cy="22" r="${r}" stroke-width="6" stroke="${on?heat(p):"transparent"}" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c*(1-(on?p:0))).toFixed(1)}"/></svg>`; }
-function gaugeSVG(p){ const len=Math.PI*24; return `<svg viewBox="0 0 56 34"><path class="tr" d="M4 30 A24 24 0 0 1 52 30"/><path class="ar" d="M4 30 A24 24 0 0 1 52 30" stroke="${heat(p)}" stroke-dasharray="${len.toFixed(1)}" stroke-dashoffset="${(len*(1-p)).toFixed(1)}"/></svg>`; }
+function gaugeSVG(p){ return `<svg viewBox="0 0 56 34"><path class="tr" d="M4 30 A24 24 0 0 1 52 30"/><path class="ar" d="M4 30 A24 24 0 0 1 52 30" stroke="${heat(p)}" stroke-dasharray="${gaugeLen.toFixed(1)}" stroke-dashoffset="${(gaugeLen*(1-p)).toFixed(1)}"/></svg>`; }
 
 /* ============================================================
    Router
@@ -668,11 +675,12 @@ function needsFirstRun(){ return !S.meta.onboarded && Store.list("items").length
 /* ============================================================
    Render
    ============================================================ */
-function render(){
+function render(opts){
+  opts=opts||{};
   parseHash();
   if(needsFirstRun()&&route.view!=="first-run"&&route.view!=="settings") route.view="first-run";
-  const changed=prevView!==null&&prevView!==route.view;
-  let dir="fade";
+  const changed=(prevView!==null&&prevView!==route.view)||!!opts.vt;
+  let dir=opts.vt||"fade";
   if(changed){ const a=TAB_ORDER.indexOf(prevView), b=TAB_ORDER.indexOf(route.view);
     if(a>-1&&b>-1) dir=b>a?"fwd":"back"; else if(a>-1&&b===-1) dir="fwd"; else if(a===-1&&b>-1) dir="back"; }
 
@@ -686,6 +694,7 @@ function render(){
       const V={home:Home,gigs:Gigs,gig:Pack,gear:Gear,kits:Kits,settings:Settings}[route.view]||Home;
       html=V.view();
     }
+    main.classList.toggle("still",!!opts.still);
     main.innerHTML=html;
     $$(".row, .tile",main).forEach((r,i)=>r.style.setProperty("--i",Math.min(i,14)));
     if(lastAdded){ const el=main.querySelector('[data-id="'+lastAdded+'"]'); if(el){ el.classList.add("new"); el.style.setProperty("--i",0); } lastAdded=null; }
@@ -726,7 +735,7 @@ const Home={
     const g=nextGig();
     let hero;
     if(g){ const p=progress(g);
-      hero=`<div class="hero" style="--fill:${fill.toFixed(3)}"><div class="blobs"><i></i><i></i><i></i></div>
+      hero=`<div class="hero" style="--fill:${fill.toFixed(3)};--mx:${(Math.sin(items.length*1.7)*18).toFixed(1)};--my:${(Math.cos(items.length*1.3)*14).toFixed(1)}"><div class="blobs"><i></i><i></i><i></i></div>
         <span class="mini">${miniSVG(p.total?p.done/p.total:0,p.total>0)}</span>
         <span class="eyebrow">Next shoot</span><h2>${esc(g.name||"Untitled")}</h2>
         <span class="meta">${esc(fmtDate(g.date))}${g.client?" · "+esc(g.client):""} · ${p.done}/${p.total} packed</span>
@@ -779,9 +788,7 @@ const Pack={
 
     /* rings + stats */
     h+=`<div class="card"><div class="ringwrap"><div class="rings${p.full?" glow":""}" id="rings">${ringsSVG(p)}</div><div class="stats">
-      <div class="stat"><b class="num"><i style="background:${heat(p.total?p.done/p.total:0)}"></i>${p.done}<small>/${p.total}</small></b><span>Packed</span></div>
-      <div class="stat"><b class="num"><i style="background:${p.exTotal?heat(p.exDone/p.exTotal):"var(--track)"}"></i>${p.exDone}<small>/${p.exTotal}</small></b><span>One-offs</span></div>
-      <div class="stat"><b class="num"><i style="background:${p.cTotal&&p.full?heat(p.cDone/p.cTotal):"var(--track)"}"></i>${p.cDone}<small>/${p.cTotal}</small></b><span>Cases in the car</span></div>
+      ${statHTML(p)}
     </div></div>`;
     const cases=casesOf(g,list);
     if(cases.length>1){ h+=`<div class="gauges">`; cases.forEach(c=>{ const arr=list.filter(e=>(e.item.containerId&&S.containers[e.item.containerId]?e.item.containerId:"__none")===c.id); const d=arr.filter(e=>packed[e.item.id]).length; h+=`<button class="gauge" data-act="jump" data-id="${esc(c.id)}">${gaugeSVG(arr.length?d/arr.length:0)}<span class="n">${esc(c.name)}</span></button>`; }); h+=`</div>`; }
@@ -800,14 +807,14 @@ const Pack={
     /* one-offs: the block that is the product */
     const ex=list.filter(e=>e.src==="extra");
     if(ex.length){ const d=ex.filter(e=>packed[e.item.id]).length;
-      h+=`<div class="grp oneoff"><div class="gh"><span class="t">Added for this shoot</span><span class="c">${d}/${ex.length}</span></div><p class="why">Not in your usual kit. These are the ones that get left behind.</p><div class="list">`;
+      h+=`<div class="grp oneoff" id="grp-oneoff"><div class="gh"><span class="t">Added for this shoot</span><span class="c">${d}/${ex.length}</span></div><p class="why">Not in your usual kit. These are the ones that get left behind.</p><div class="list">`;
       ex.sort((a,b)=>byName(a.item,b.item)).forEach(e=>h+=packRow(e.item,!!packed[e.item.id],true)); h+=`</div></div>`; }
 
     /* case groups */
     const groups={}; list.filter(e=>e.src!=="extra").forEach(e=>{ const k=e.item.containerId&&S.containers[e.item.containerId]?e.item.containerId:"__none"; (groups[k]=groups[k]||[]).push(e.item); });
     cases.forEach(c=>{ const arr=groups[c.id]; if(!arr||!arr.length) return; const d=arr.filter(i=>packed[i.id]).length, all=d===arr.length;
       h+=`<div class="grp${all?" collapsed":""}" id="grp-${esc(c.id)}" data-case="${esc(c.id)}">`;
-      if(all) h+=`<button class="donerow" data-act="expand" data-id="${esc(c.id)}"><span class="tick">${checkSvg}</span><span class="swatch" style="background:${esc(c.color)}"></span>${esc(c.name)} · ${arr.length} packed<span style="margin-left:auto;font-weight:600;color:var(--ink-3);font-size:13px;">Show</span></button>`;
+      if(all) h+=donerowHTML(c,arr.length);
       h+=`<div class="body"${all?' style="max-height:0"':""}><div class="gh"><span class="swatch" style="background:${esc(c.color)}"></span><span class="t">${esc(c.name)}</span><span class="c">${d}/${arr.length}</span></div><div class="list">`;
       arr.sort(byName).forEach(i=>h+=packRow(i,!!packed[i.id],false)); h+=`</div></div></div>`; });
 
@@ -826,9 +833,32 @@ const Pack={
     const g=S.gigs[route.arg]; if(!g) return;
     const p=progress(g);
     if(this.wasFull===false&&p.full) punch();
-    this.wasFull=p.full;
+    this.wasFull=p.full; this.wasLoaded=p.loaded;
+  },
+  /* Patch the screen from state without re-rendering, so transitions run.
+     Returns false when the structure changes (packed↔full, loaded), which
+     needs a real render. */
+  refresh(){
+    const g=S.gigs[route.arg]; if(!g) return false;
+    const p=progress(g), list=itemsOf(g), packed=g.packed||{};
+    if(p.full!==this.wasFull||p.loaded!==this.wasLoaded) return false;
+    const rings=$("#rings");
+    if(rings){ const arcs=ringArcs(p); $$("circle.ar",rings).forEach((c,i)=>{ const a=arcs[i]; if(!a) return; c.setAttribute("stroke",a.col); c.style.color=a.col; c.setAttribute("stroke-dashoffset",a.off); }); const mid=$(".mid b",rings); if(mid) mid.textContent=p.total?Math.round(p.done/p.total*100)+"%":"—"; rings.classList.toggle("glow",p.full); }
+    const stats=$(".stats"); if(stats) stats.innerHTML=statHTML(p);
+    const cases=casesOf(g,list);
+    $$(".gauge[data-id]").forEach(el=>{ const cid=el.dataset.id; const arr=list.filter(e=>(e.item.containerId&&S.containers[e.item.containerId]?e.item.containerId:"__none")===cid); const q=arr.length?arr.filter(e=>packed[e.item.id]).length/arr.length:0; const ar=$("path.ar",el); if(ar){ ar.setAttribute("stroke",heat(q)); ar.setAttribute("stroke-dashoffset",(gaugeLen*(1-q)).toFixed(1)); } });
+    const oo=$("#grp-oneoff"); if(oo){ const ex=list.filter(e=>e.src==="extra"); const d=ex.filter(e=>packed[e.item.id]).length; $(".gh .c",oo).textContent=d+"/"+ex.length; }
+    $$(".grp[data-case]").forEach(grp=>{ const cid=grp.dataset.case; const arr=list.filter(e=>e.src!=="extra"&&(e.item.containerId&&S.containers[e.item.containerId]?e.item.containerId:"__none")===cid); const d=arr.filter(e=>packed[e.item.id]).length; const cnt=$(".gh .c",grp); if(cnt) cnt.textContent=d+"/"+arr.length;
+      if(arr.length&&d===arr.length&&!grp.classList.contains("collapsed")){ const body=$(".body",grp); const c=cases.find(x=>x.id===cid)||{id:cid,name:"Loose items",color:"#8b9296"}; body.style.maxHeight=body.scrollHeight+"px"; void body.offsetHeight; setTimeout(()=>{ grp.classList.add("collapsed"); grp.insertAdjacentHTML("afterbegin",donerowHTML(c,arr.length)); },320); } });
+    return true;
   }
 };
+function statHTML(p){
+  return `<div class="stat" data-stat="packed"><b class="num"><i style="background:${heat(p.total?p.done/p.total:0)}"></i>${p.done}<small>/${p.total}</small></b><span>Packed</span></div>
+      <div class="stat" data-stat="ex"><b class="num"><i style="background:${p.exTotal?heat(p.exDone/p.exTotal):"var(--track)"}"></i>${p.exDone}<small>/${p.exTotal}</small></b><span>One-offs</span></div>
+      <div class="stat" data-stat="cases"><b class="num"><i style="background:${p.cTotal&&p.full?heat(p.cDone/p.cTotal):"var(--track)"}"></i>${p.cDone}<small>/${p.cTotal}</small></b><span>Cases in the car</span></div>`;
+}
+function donerowHTML(c,n){ return `<button class="donerow" data-act="expand" data-id="${esc(c.id)}"><span class="tick">${checkSvg}</span><span class="swatch" style="background:${esc(c.color)}"></span>${esc(c.name)} · ${n} packed<span style="margin-left:auto;font-weight:600;color:var(--ink-3);font-size:13px;">Show</span></button>`; }
 function packRow(it,on,extra){
   return `<button class="row pack${on?" done":""}" data-act="tick" data-id="${esc(it.id)}"><span class="tick">${checkSvg}</span>${thumb(it)}<span><span class="t">${esc(it.name)}</span>${it.note?`<span class="s">${esc(it.note)}</span>`:""}</span>${extra?`<span class="pill">One-off</span>`:"<span></span>"}</button>`;
 }
@@ -911,19 +941,33 @@ const FirstRun={
   step:0,kitName:"",items:[],
   view(){
     if(this.step===0) return `<div class="fr0"><div class="blobs"><i></i><i></i><i></i></div><div class="in"><div class="mark"><img src="icon-192.png" alt=""></div><h1>Pack against a list that knows what this shoot is.</h1><p>Your gear lives in cases. Kits are blocks you add to a gig. Anything added just for one shoot gets pulled to the top, because that's the stuff that gets left behind.</p><button class="btn" data-act="fr-start">Build my first kit</button><button class="btn ghost" data-act="fr-skip">Skip, start empty</button></div></div>`;
-    if(this.step===1) return `<div class="fr"><p class="small" style="font-weight:700;margin:6px 0 0;">Step 1 of 2</p><h1 class="big">Name the kit.</h1><p class="lede">A block of gear you'd grab together. Interview audio. Grip. The A-cam and everything that hangs off it.</p><div class="field"><label for="frKit">Kit name</label><input id="frKit" placeholder="Interview kit" value="${esc(this.kitName)}" autocomplete="off" enterkeyhint="next"></div><div class="grow"></div><button class="btn primary" data-act="fr-next" id="frNext">Next</button></div>`;
+    if(this.step===1) return `<div class="fr">${FirstRun.heroHTML(0)}<p class="small" style="font-weight:700;margin:6px 0 0;">Step 1 of 2</p><h1 class="big">Name the kit.</h1><p class="lede">A block of gear you'd grab together. Interview audio. Grip. The A-cam and everything that hangs off it.</p><div class="field"><label for="frKit">Kit name</label><input id="frKit" placeholder="Interview kit" value="${esc(this.kitName)}" autocomplete="off" enterkeyhint="next"></div><div class="grow"></div><button class="btn primary" data-act="fr-next" id="frNext">Next</button></div>`;
     const n=this.items.length;
     return `<div class="fr"><p class="small" style="font-weight:700;margin:6px 0 0;">Step 2 of 2 · ${esc(this.kitName)}</p><h1 class="big">What's in it?</h1><p class="lede" style="margin-bottom:6px;">Type a name, hit return, keep going. Cases and photos can wait.</p>
-      <div class="strip" style="--fill:${Math.min(1,n/12).toFixed(3)}"><i></i></div>
+      ${FirstRun.heroHTML(n)}
       <div class="addbar"><input id="frItem" placeholder="Sony FX6" autocomplete="off" enterkeyhint="done" autocapitalize="words"><button class="btn primary" data-act="fr-add">Add</button></div>
-      <p class="count" style="margin-top:14px;">${n} ${n===1?"item":"items"}</p><div class="list" id="frList">${this.items.map((it,i)=>`<button class="row" data-act="fr-edit" data-i="${i}">${thumb(it)}<span><span class="t">${esc(it.name)}</span><span class="s">${it.containerId&&S.containers[it.containerId]?esc(S.containers[it.containerId].name):"No case yet"}</span></span>${chev}</button>`).join("")}</div>
-      <div class="grow"></div><button class="btn primary" data-act="fr-save" ${n?"":"disabled"} style="margin-top:16px;">Save kit${n?" · "+n+" items":""}</button></div>`;
+      <p class="count" id="frCount" style="margin-top:14px;">${n} ${n===1?"item":"items"}</p><div class="list" id="frList">${this.items.map((it,i)=>FirstRun.rowHTML(it,i)).join("")}</div>
+      <div class="grow"></div><button class="btn primary" data-act="fr-save" id="frSave" ${n?"":"disabled"} style="margin-top:16px;">Save kit${n?" · "+n+" items":""}</button></div>`;
   },
   after(){
     const k=$("#frKit"); if(k){ k.focus(); k.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); $("#frNext").click(); } }); }
     const it=$("#frItem"); if(it){ it.focus(); it.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); FirstRun.add(); } }); }
   },
-  add(){ const inp=$("#frItem"); const v=(inp.value||"").trim(); if(!v) return; this.items.push({name:v,category:guessCat(v),containerId:"",photoId:""}); inp.value=""; render(); $("#frItem").focus(); },
+  heroHTML(n){ const f=Math.min(1,n/12); return `<div class="hero frh" id="frHero" style="--fill:${f.toFixed(3)};--mx:${(Math.sin(n*1.7)*18).toFixed(1)};--my:${(Math.cos(n*1.3)*14).toFixed(1)}"><div class="blobs"><i></i><i></i><i></i></div><span class="k" id="frK">${n?n+(n===1?" item":" items"):"Empty kit"}</span><span class="m" id="frM">${n>=12?"That's a real kit.":n?"Keep going, it fills as you add.":"Add the first thing."}</span></div>`; },
+  rowHTML(it,i){ return `<button class="row" data-act="fr-edit" data-i="${i}">${thumb(it)}<span><span class="t">${esc(it.name)}</span><span class="s">${it.containerId&&S.containers[it.containerId]?esc(S.containers[it.containerId].name):"No case yet"}</span></span>${chev}</button>`; },
+  add(){
+    const inp=$("#frItem"); const v=(inp.value||"").trim(); if(!v) return;
+    const it={name:v,category:guessCat(v),containerId:"",photoId:""}; this.items.push(it); inp.value="";
+    const list=$("#frList"), hero=$("#frHero"), n=this.items.length;
+    if(!list||!hero){ render(); $("#frItem").focus(); return; }
+    /* patch in place so the band grows, drifts, and the row pops */
+    list.insertAdjacentHTML("beforeend",this.rowHTML(it,n-1)); const row=list.lastElementChild; row.classList.add("new"); row.style.setProperty("--i",0);
+    hero.style.setProperty("--fill",Math.min(1,n/12).toFixed(3)); hero.style.setProperty("--mx",(Math.sin(n*1.7)*18).toFixed(1)); hero.style.setProperty("--my",(Math.cos(n*1.3)*14).toFixed(1));
+    $("#frK").textContent=n+(n===1?" item":" items"); $("#frM").textContent=n>=12?"That's a real kit.":"Keep going, it fills as you add.";
+    $("#frCount").textContent=n+(n===1?" item":" items");
+    const save=$("#frSave"); save.disabled=false; save.textContent="Save kit · "+n+(n===1?" item":" items");
+    inp.focus();
+  },
   async save(){
     const created=[];
     for(const it of this.items){ const rec={id:uid(),name:it.name,category:it.category||"misc",containerId:it.containerId||"",photoId:it.photoId||"",note:"",archived:false,createdAt:now()}; await Store.save("items",rec); created.push(rec.id); }
@@ -1137,9 +1181,9 @@ document.addEventListener("click",async e=>{
   const t=e.target.closest("[data-act]"); if(!t) return;
   const act=t.dataset.act, id=t.dataset.id; const gig=route.view==="gig"?S.gigs[route.arg]:null;
 
-  if(act==="fr-start"){ FirstRun.step=1; render(); return; }
+  if(act==="fr-start"){ FirstRun.step=1; render({vt:"fade"}); return; }
   if(act==="fr-skip"){ await Store.setMeta("onboarded",true); go("home"); return; }
-  if(act==="fr-next"){ const v=val("frKit"); if(!v){ toast("Give the kit a name."); return; } FirstRun.kitName=v; FirstRun.step=2; render(); return; }
+  if(act==="fr-next"){ const v=val("frKit"); if(!v){ toast("Give the kit a name."); return; } FirstRun.kitName=v; FirstRun.step=2; render({vt:"fade"}); return; }
   if(act==="fr-add"){ FirstRun.add(); return; }
   if(act==="fr-edit"){ sheetItem(FirstRun.items[+t.dataset.i],{firstRun:true}); return; }
   if(act==="fr-save"){ await FirstRun.save(); return; }
@@ -1159,10 +1203,12 @@ document.addEventListener("click",async e=>{
 
   if(act==="tick"){ if(!gig) return; const p=Object.assign({},gig.packed||{}); p[id]=!p[id]; if(!p[id]) delete p[id];
     t.classList.toggle("done",!!p[id]);
-    await Store.save("gigs",Object.assign({},gig,{packed:p})); setTimeout(render,180); return; }
+    await Store.save("gigs",Object.assign({},gig,{packed:p}));
+    if(!Pack.refresh()) setTimeout(()=>render({still:true}),260); return; }
   if(act==="load"){ if(!gig) return; const l=Object.assign({},gig.loaded||{}); l[id]=!l[id]; if(!l[id]) delete l[id]; t.classList.toggle("done",!!l[id]);
-    const rec=Object.assign({},gig,{loaded:l}); const pr=progress(rec); rec.completedAt=pr.loaded?now():null; await Store.save("gigs",rec); setTimeout(render,180); return; }
-  if(act==="expand"){ const grp=t.closest(".grp"); if(!grp) return; const body=grp.querySelector(".body"); grp.classList.remove("collapsed"); body.style.maxHeight=body.scrollHeight+"px"; t.remove(); return; }
+    const rec=Object.assign({},gig,{loaded:l}); const pr=progress(rec); rec.completedAt=pr.loaded?now():null; await Store.save("gigs",rec);
+    if(!Pack.refresh()) setTimeout(()=>render({still:true}),260); return; }
+  if(act==="expand"){ const grp=t.closest(".grp"); if(!grp) return; const body=grp.querySelector(".body"); grp.classList.remove("collapsed"); body.style.maxHeight=body.scrollHeight+"px"; t.remove(); setTimeout(()=>{ body.style.maxHeight=""; },500); return; }
   if(act==="jump"){ const el=document.getElementById("grp-"+id); if(el){ el.scrollIntoView({behavior:reduced()?"auto":"smooth",block:"start"}); } return; }
 
   if(act==="export"){ try{ toast("Saved "+await Backup.download()); }catch(err){ toast("Export failed: "+err.message,true); } return; }
