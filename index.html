@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f4f5f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101416" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Case Check">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<title>Case Check</title>
+
+<!--
+  PHASE 0 FOUNDATION. See SPEC.md.
+  What lives here: design tokens, IndexedDB layer with schema migration,
+  JSON backup export/import, service worker wiring, build number, diagnostics.
+  What does NOT live here yet: gear, kits, gigs, packing. That is Phase 1+.
+
+  Conventions for whoever builds Phase 1:
+  - Bump BUILD on every deploy. The service worker cache name keys off it.
+  - Add new object stores by appending a migration in DB.migrations, never by
+    editing an existing one. DB_VERSION must go up by one at the same time.
+  - Every colour comes from a token in :root. Never define a colour only
+    inside a media query or a [data-theme] block.
+  - The ambient gradient layer (.bg) is the app's progress indicator. Drive it
+    with setProgress(0..1). Do not add conventional progress bars.
+-->
+
+<style>
+:root{
+  --bg:#f4f5f3;
+  --surface:#ffffff;
+  --surface-2:#e9ebe7;
+  --ink:#141a1b;
+  --ink-2:#58635f;
+  --ink-3:#8a9490;
+  --line:#dcdfda;
+  --line-2:#e9ebe7;
+  --accent:#2c6157;
+  --accent-ink:#ffffff;
+  --accent-soft:#dfeeea;
+  --good:#2e7d52;
+  --warn:#8d5a15;
+  --danger:#a2392b;
+  --grad-a:#7fb7a6;
+  --grad-b:#c9b78a;
+  --grad-c:#8fa6c4;
+  --grad-alpha:0.55;
+  --ui:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:14px;
+  --tap:44px;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101416;
+    --surface:#191f21;
+    --surface-2:#222a2c;
+    --ink:#eef2f1;
+    --ink-2:#a2aeae;
+    --ink-3:#6e7b7b;
+    --line:#2a3335;
+    --line-2:#222a2c;
+    --accent:#68c0ad;
+    --accent-ink:#06201b;
+    --accent-soft:#13302b;
+    --good:#5cc48c;
+    --warn:#d6a05e;
+    --danger:#e08575;
+    --grad-a:#2b6d5f;
+    --grad-b:#6b5a2e;
+    --grad-c:#2f4a6b;
+    --grad-alpha:0.75;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101416;
+  --surface:#191f21;
+  --surface-2:#222a2c;
+  --ink:#eef2f1;
+  --ink-2:#a2aeae;
+  --ink-3:#6e7b7b;
+  --line:#2a3335;
+  --line-2:#222a2c;
+  --accent:#68c0ad;
+  --accent-ink:#06201b;
+  --accent-soft:#13302b;
+  --good:#5cc48c;
+  --warn:#d6a05e;
+  --danger:#e08575;
+  --grad-a:#2b6d5f;
+  --grad-b:#6b5a2e;
+  --grad-c:#2f4a6b;
+  --grad-alpha:0.75;
+}
+
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--ui);font-size:16px;line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  padding-inline:16px;
+  padding-block:0 calc(24px + env(safe-area-inset-bottom));
+  overflow-x:hidden;
+}
+
+/* ---- ambient gradient: this is the progress indicator (see SPEC 1.1) ---- */
+.bg{
+  position:fixed;inset:0;z-index:-1;pointer-events:none;
+  opacity:var(--p-op,.25);
+  transition:opacity .9s var(--ease);
+  will-change:transform,opacity;
+}
+.bg i{
+  position:absolute;display:block;border-radius:50%;
+  filter:blur(60px);opacity:var(--grad-alpha);
+  will-change:transform;
+}
+.bg i:nth-child(1){width:70vmax;height:70vmax;left:-25vmax;top:-30vmax;background:var(--grad-a);animation:drift1 64s var(--ease) infinite alternate;}
+.bg i:nth-child(2){width:60vmax;height:60vmax;right:-25vmax;top:10vmax;background:var(--grad-b);animation:drift2 81s var(--ease) infinite alternate;}
+.bg i:nth-child(3){width:64vmax;height:64vmax;left:5vmax;bottom:-34vmax;background:var(--grad-c);animation:drift3 73s var(--ease) infinite alternate;}
+@keyframes drift1{to{transform:translate3d(14vmax,10vmax,0) scale(1.15);}}
+@keyframes drift2{to{transform:translate3d(-12vmax,14vmax,0) scale(1.1);}}
+@keyframes drift3{to{transform:translate3d(10vmax,-12vmax,0) scale(1.18);}}
+
+.shell{max-width:640px;margin:0 auto;}
+
+header.top{
+  display:flex;align-items:center;gap:12px;
+  padding-block:calc(18px + env(safe-area-inset-top)) 14px;
+}
+.wordmark{display:flex;align-items:center;gap:10px;}
+.wordmark img{width:28px;height:28px;border-radius:7px;display:block;}
+.wordmark h1{margin:0;font-size:17px;font-weight:700;letter-spacing:-.02em;}
+header.top .sp{flex:1;}
+
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 6px;
+}
+h2{font-size:24px;font-weight:700;letter-spacing:-.03em;margin:0 0 8px;text-wrap:balance;}
+p.lede{color:var(--ink-2);font-size:15px;margin:0 0 18px;max-width:52ch;}
+
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:16px;margin-bottom:12px;
+}
+.card h3{margin:0 0 10px;font-size:15px;font-weight:700;letter-spacing:-.01em;}
+
+.kv{display:grid;gap:0;}
+.kv div{
+  display:flex;justify-content:space-between;gap:14px;align-items:baseline;
+  padding:9px 0;border-bottom:1px solid var(--line-2);font-size:14.5px;
+}
+.kv div:last-child{border-bottom:0;}
+.kv span:first-child{color:var(--ink-2);}
+.kv span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;}
+.ok{color:var(--good);}
+.no{color:var(--danger);}
+
+.btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  min-height:var(--tap);padding:12px 16px;border-radius:11px;
+  font:inherit;font-weight:600;font-size:15px;cursor:pointer;
+  background:var(--surface);border:1px solid var(--line);color:var(--ink);
+  transition:transform .12s var(--ease),background .2s var(--ease);
+}
+.btn:active{transform:scale(.985);}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;}
+.btn.danger{color:var(--danger);}
+.btn+.btn{margin-top:8px;}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--surface-2);padding:4px;border-radius:11px;}
+.seg button{
+  font:inherit;font-size:13.5px;font-weight:600;border:0;background:transparent;color:var(--ink-2);
+  padding:9px 4px;border-radius:8px;cursor:pointer;min-height:38px;
+}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08);}
+
+.toast{
+  position:fixed;left:16px;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:50;
+  max-width:608px;margin:0 auto;background:var(--surface);border:1px solid var(--line);
+  border-radius:12px;padding:13px 15px;font-size:14.5px;box-shadow:0 10px 30px rgba(0,0,0,.16);
+  transform:translateY(140%);transition:transform .34s var(--ease);
+}
+.toast.up{transform:translateY(0);}
+.toast.bad{border-color:var(--danger);}
+
+.note{font-size:13px;color:var(--ink-3);margin:8px 0 0;}
+.next{border-left:3px solid var(--accent);padding-left:14px;margin:24px 0 8px;}
+.next h3{margin:0 0 4px;font-size:15px;font-weight:700;}
+.next p{margin:0;font-size:14px;color:var(--ink-2);}
+
+footer.build{
+  margin-top:28px;padding-top:16px;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);
+  display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important;transition:none !important;}
+  .bg i{animation:none !important;}
+}
+</style>
+</head>
+<body>
+
+<div class="bg" id="bg" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<div class="shell">
+  <header class="top">
+    <div class="wordmark">
+      <img src="icon-192.png" alt="">
+      <h1>Case Check</h1>
+    </div>
+    <span class="sp"></span>
+  </header>
+
+  <main id="main"></main>
+
+  <footer class="build">
+    <span id="buildLine">build —</span>
+    <span id="netLine">—</span>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ============================================================
+   Case Check — Phase 0 foundation
+   ============================================================ */
+"use strict";
+
+const BUILD = 1;                 // bump on EVERY deploy
+const DB_NAME = "casecheck";
+const DB_VERSION = 1;
+
+/* ---------- tiny helpers ---------- */
+const $ = (s, r) => (r || document).querySelector(s);
+const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
+const fmtBytes = b => b == null ? "—" : b < 1024 ? b + " B"
+  : b < 1048576 ? (b / 1024).toFixed(1) + " KB"
+  : b < 1073741824 ? (b / 1048576).toFixed(1) + " MB"
+  : (b / 1073741824).toFixed(2) + " GB";
+
+let toastTimer = null;
+function toast(msg, bad) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.toggle("bad", !!bad);
+  t.classList.add("up");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("up"), 3800);
+}
+
+/* ---------- ambient gradient = progress (SPEC 1.1) ----------
+   Phase 1+ calls setProgress() from kit size; Phase 2 from packed/total. */
+function setProgress(p) {
+  const v = Math.max(0, Math.min(1, p || 0));
+  document.documentElement.style.setProperty("--p-op", (0.14 + v * 0.72).toFixed(3));
+}
+
+/* ============================================================
+   DB — IndexedDB with explicit, append-only migrations
+   ============================================================ */
+const DB = {
+  _db: null,
+
+  /* Append a migration here and raise DB_VERSION by one.
+     Never edit a migration that has shipped. */
+  migrations: [
+    function v1(db) {
+      db.createObjectStore("meta",       { keyPath: "key" });
+      db.createObjectStore("containers", { keyPath: "id" });
+      db.createObjectStore("items",      { keyPath: "id" }).createIndex("byContainer", "containerId");
+      db.createObjectStore("kits",       { keyPath: "id" });
+      db.createObjectStore("gigs",       { keyPath: "id" }).createIndex("byDate", "date");
+      db.createObjectStore("photos",     { keyPath: "id" });
+    }
+  ],
+
+  open() {
+    if (this._db) return Promise.resolve(this._db);
+    return new Promise((res, rej) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = e => {
+        const db = req.result;
+        for (let v = e.oldVersion; v < DB_VERSION; v++) {
+          DB.migrations[v](db, req.transaction);
+        }
+      };
+      req.onsuccess = () => { this._db = req.result; res(this._db); };
+      req.onerror = () => rej(req.error);
+      req.onblocked = () => rej(new Error("Database blocked by another open tab."));
+    });
+  },
+
+  /* Transactions are created synchronously and used in the same turn.
+     IndexedDB deactivates a transaction as soon as control returns to the
+     event loop, so never await between creating one and using it. */
+  tx(stores, mode) {
+    if (!this._db) throw new Error("Database not open yet.");
+    return this._db.transaction(stores, mode || "readonly");
+  },
+
+  _req(store, mode, fn) {
+    return this.open().then(() => new Promise((res, rej) => {
+      const tx = this.tx([store], mode);
+      const r = fn(tx.objectStore(store));
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+      tx.onabort = () => rej(tx.error);
+    }));
+  },
+
+  all(store)        { return this._req(store, "readonly",  s => s.getAll()).then(r => r || []); },
+  put(store, value) { return this._req(store, "readwrite", s => s.put(value)).then(() => value); },
+  get(store, key)   { return this._req(store, "readonly",  s => s.get(key)); },
+  del(store, key)   { return this._req(store, "readwrite", s => s.delete(key)); },
+
+  clearAll() {
+    const stores = ["meta", "containers", "items", "kits", "gigs", "photos"];
+    return this.open().then(() => new Promise((res, rej) => {
+      const tx = this.tx(stores, "readwrite");
+      stores.forEach(s => tx.objectStore(s).clear());
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+      tx.onabort = () => rej(tx.error);
+    }));
+  },
+
+  counts() {
+    const stores = ["containers", "items", "kits", "gigs", "photos"];
+    return Promise.all(stores.map(s => this.all(s).then(r => [s, r.length])))
+      .then(pairs => Object.fromEntries(pairs));
+  }
+};
+
+/* ============================================================
+   Backup — export and import must round-trip photos (SPEC 6.2)
+   ============================================================ */
+const blobToDataURL = b => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(fr.result);
+  fr.onerror = () => rej(fr.error);
+  fr.readAsDataURL(b);
+});
+const dataURLToBlob = async d => (await fetch(d)).blob();
+
+const Backup = {
+  async export() {
+    const stores = ["meta", "containers", "items", "kits", "gigs"];
+    const data = {};
+    for (const s of stores) data[s] = await DB.all(s);
+
+    const photos = await DB.all("photos");
+    data.photos = [];
+    for (const p of photos) {
+      data.photos.push({
+        id: p.id,
+        type: p.blob ? p.blob.type : (p.type || "image/jpeg"),
+        dataURL: p.blob ? await blobToDataURL(p.blob) : (p.dataURL || null)
+      });
+    }
+
+    return {
+      app: "case-check",
+      formatVersion: 1,
+      build: BUILD,
+      dbVersion: DB_VERSION,
+      exportedAt: new Date().toISOString(),
+      data
+    };
+  },
+
+  async download() {
+    const payload = await this.export();
+    const name = "case-check-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return name;
+  },
+
+  validate(payload) {
+    if (!payload || typeof payload !== "object") return "That file isn't readable.";
+    if (payload.app !== "case-check") return "That's not a Case Check backup.";
+    if (!payload.data || typeof payload.data !== "object") return "That backup has no data in it.";
+    if (payload.formatVersion > 1) return "That backup was made by a newer version of the app.";
+    return null;
+  },
+
+  /* Replaces everything. Caller confirms first. */
+  async restore(payload) {
+    const bad = this.validate(payload);
+    if (bad) throw new Error(bad);
+    const d = payload.data;
+
+    await DB.clearAll();
+
+    for (const s of ["meta", "containers", "items", "kits", "gigs"]) {
+      for (const row of (d[s] || [])) await DB.put(s, row);
+    }
+    for (const p of (d.photos || [])) {
+      if (!p.dataURL) continue;
+      await DB.put("photos", { id: p.id, blob: await dataURLToBlob(p.dataURL) });
+    }
+    return true;
+  }
+};
+
+/* ============================================================
+   Service worker
+   ============================================================ */
+const SW = { reg: null, state: "unsupported", updateReady: false };
+
+async function initSW() {
+  if (!("serviceWorker" in navigator)) return;
+  SW.state = "registering";
+  try {
+    const reg = await navigator.serviceWorker.register("sw.js");
+    SW.reg = reg;
+    SW.state = reg.active ? "active" : "installing";
+
+    reg.addEventListener("updatefound", () => {
+      const nw = reg.installing;
+      if (!nw) return;
+      nw.addEventListener("statechange", () => {
+        if (nw.state === "installed" && navigator.serviceWorker.controller) {
+          SW.updateReady = true;
+          render();
+          toast("Update ready. Reload to get it.");
+        }
+        if (nw.state === "activated") { SW.state = "active"; render(); }
+      });
+    });
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => location.reload());
+    if (reg.active) SW.state = "active";
+  } catch (e) {
+    SW.state = "failed";
+  }
+  render();
+}
+
+/* ============================================================
+   Theme
+   ============================================================ */
+const Theme = {
+  get() { try { return localStorage.getItem("cc.theme") || "system"; } catch (e) { return "system"; } },
+  set(v) {
+    try { localStorage.setItem("cc.theme", v); } catch (e) {}
+    this.apply();
+  },
+  apply() {
+    const v = this.get();
+    const r = document.documentElement;
+    if (v === "system") r.removeAttribute("data-theme");
+    else r.setAttribute("data-theme", v);
+  }
+};
+Theme.apply();
+
+/* ============================================================
+   Render
+   ============================================================ */
+let diag = { counts: {}, storage: null, persisted: null };
+
+async function refreshDiag() {
+  try { diag.counts = await DB.counts(); } catch (e) { diag.counts = null; }
+  try {
+    diag.storage = navigator.storage && navigator.storage.estimate
+      ? await navigator.storage.estimate() : null;
+  } catch (e) { diag.storage = null; }
+  try {
+    diag.persisted = navigator.storage && navigator.storage.persisted
+      ? await navigator.storage.persisted() : null;
+  } catch (e) { diag.persisted = null; }
+}
+
+function render() {
+  const standalone = window.matchMedia("(display-mode: standalone)").matches
+    || window.navigator.standalone === true;
+  const c = diag.counts || {};
+  const total = (c.containers || 0) + (c.items || 0) + (c.kits || 0) + (c.gigs || 0);
+  const theme = Theme.get();
+
+  const m = $("#main");
+  m.innerHTML = `
+    <p class="eyebrow">Phase 0 · foundation</p>
+    <h2>The plumbing works. Now it needs the app.</h2>
+    <p class="lede">Storage, backup, offline and install are done and verified below.
+    Gear, kits, gigs and packing come next. See SPEC.md.</p>
+
+    <div class="card">
+      <h3>Status</h3>
+      <div class="kv">
+        <div><span>Installed to home screen</span><span class="${standalone ? "ok" : ""}">${standalone ? "yes" : "browser tab"}</span></div>
+        <div><span>Service worker</span><span class="${SW.state === "active" ? "ok" : SW.state === "failed" ? "no" : ""}">${SW.state}</span></div>
+        <div><span>Database</span><span class="ok">v${DB_VERSION}</span></div>
+        <div><span>Records stored</span><span>${total}</span></div>
+        <div><span>Photos</span><span>${c.photos || 0}</span></div>
+        <div><span>Storage used</span><span>${diag.storage ? fmtBytes(diag.storage.usage) : "—"}</span></div>
+        <div><span>Storage persistent</span><span>${diag.persisted === null ? "—" : diag.persisted ? "yes" : "best effort"}</span></div>
+      </div>
+      ${SW.updateReady ? `<button class="btn primary" id="reloadBtn" style="margin-top:12px;">Reload for update</button>` : ""}
+    </div>
+
+    <div class="card">
+      <h3>Backup</h3>
+      <button class="btn" id="exportBtn">Export backup</button>
+      <button class="btn" id="importBtn">Restore from backup</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <p class="note">Everything lives on this device only. A backup is the only way to move
+      it to another phone or get it back if this one is wiped. Export after any big change.</p>
+    </div>
+
+    <div class="card">
+      <h3>Appearance</h3>
+      <div class="seg" id="themeSeg">
+        <button data-t="system" class="${theme === "system" ? "on" : ""}">System</button>
+        <button data-t="light"  class="${theme === "light" ? "on" : ""}">Light</button>
+        <button data-t="dark"   class="${theme === "dark" ? "on" : ""}">Dark</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Self test</h3>
+      <button class="btn" id="testBtn">Run round-trip test</button>
+      <p class="note">Writes a sample record and a sample photo, exports, wipes, restores,
+      and checks everything came back. Safe to run once there is real data, but it will
+      briefly clear the database, so export first.</p>
+    </div>
+
+    <div class="next">
+      <h3>Next: Phase 1</h3>
+      <p>First-run kit builder, gear and case management, photos with client-side resize,
+      and the gradient responding to kit size.</p>
+    </div>
+
+    <div class="card" style="border-color:transparent;background:transparent;padding:0;">
+      <button class="btn danger" id="wipeBtn">Delete all data</button>
+    </div>
+  `;
+
+  $("#exportBtn").onclick = async () => {
+    try { const n = await Backup.download(); toast("Saved " + n); }
+    catch (e) { toast("Export failed: " + e.message, true); }
+  };
+  $("#importBtn").onclick = () => $("#importFile").click();
+  $("#importFile").onchange = async ev => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!f) return;
+    if (!confirm("Restoring replaces everything currently in the app. Continue?")) return;
+    try {
+      const payload = JSON.parse(await f.text());
+      await Backup.restore(payload);
+      await refreshDiag();
+      render();
+      toast("Restored from backup.");
+    } catch (e) { toast(e.message || "That backup couldn't be read.", true); }
+  };
+  $("#themeSeg").onclick = e => {
+    const b = e.target.closest("[data-t]");
+    if (!b) return;
+    Theme.set(b.dataset.t);
+    render();
+  };
+  $("#wipeBtn").onclick = async () => {
+    if (!confirm("Delete everything on this device? This cannot be undone.")) return;
+    if (!confirm("Really sure? Export a backup first if you might want it back.")) return;
+    await DB.clearAll();
+    await refreshDiag();
+    render();
+    toast("Everything deleted.");
+  };
+  $("#testBtn").onclick = runSelfTest;
+  const rb = $("#reloadBtn");
+  if (rb) rb.onclick = () => location.reload();
+
+  $("#buildLine").textContent = "build " + BUILD + " · db v" + DB_VERSION;
+  $("#netLine").textContent = navigator.onLine ? "online" : "offline · working anyway";
+
+  setProgress(total ? Math.min(1, total / 40) : 0.06);
+}
+
+/* ---------- self test: proves acceptance criterion 2 ---------- */
+async function runSelfTest() {
+  if (!confirm("This clears the database as part of the test. Export a backup first if you have real data. Continue?")) return;
+  const log = [];
+  try {
+    const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const id = "test_" + Date.now();
+    await DB.put("containers", { id: "test_case", name: "Test case", color: "#8b9296", order: 99 });
+    await DB.put("items", { id: id, name: "Test item", category: "misc", containerId: "test_case", photoId: id, note: "", archived: false, createdAt: new Date().toISOString() });
+    await DB.put("photos", { id: id, blob: await dataURLToBlob(png) });
+    log.push("wrote records");
+
+    const snapshot = await Backup.export();
+    log.push("exported " + (snapshot.data.items.length) + " items, " + snapshot.data.photos.length + " photos");
+
+    await DB.clearAll();
+    const empty = await DB.counts();
+    if (empty.items !== 0) throw new Error("clear did not empty the database");
+    log.push("cleared");
+
+    await Backup.restore(snapshot);
+    const back = await DB.counts();
+    const item = await DB.get("items", id);
+    const photo = await DB.get("photos", id);
+    if (!item || item.name !== "Test item") throw new Error("item did not come back");
+    if (!photo || !photo.blob || photo.blob.size < 1) throw new Error("photo did not come back");
+    log.push("restored " + back.items + " items, " + back.photos + " photos, photo is " + photo.blob.size + " bytes");
+
+    await DB.del("items", id);
+    await DB.del("photos", id);
+    await DB.del("containers", "test_case");
+
+    await refreshDiag();
+    render();
+    toast("Round trip passed. " + log.join(" · "));
+  } catch (e) {
+    toast("FAILED: " + e.message, true);
+  }
+}
+
+/* ============================================================
+   Boot
+   ============================================================ */
+window.addEventListener("online",  () => render());
+window.addEventListener("offline", () => render());
+
+(async function boot() {
+  try {
+    await DB.open();
+  } catch (e) {
+    $("#main").innerHTML = '<div class="card"><h3>Storage unavailable</h3>'
+      + '<p class="note">This browser blocked local storage, so nothing can be saved. '
+      + 'Private browsing is the usual cause.</p></div>';
+    return;
+  }
+  try {
+    if (navigator.storage && navigator.storage.persist) await navigator.storage.persist();
+  } catch (e) {}
+  await refreshDiag();
+  render();
+  initSW();
+})();
+</script>
+</body>
+</html>
