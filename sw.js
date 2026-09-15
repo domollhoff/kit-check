@@ -2,7 +2,7 @@
    Cache name keys off BUILD. Bump BUILD in BOTH sw.js and index.html on every
    deploy, or the update will not land on an installed home-screen app. */
 
-const BUILD = 8;
+const BUILD = 9;
 const CACHE = "kit-check-v" + BUILD;
 
 const SHELL = [
